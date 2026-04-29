@@ -1,0 +1,12 @@
+name: shadowsocks-rust
+
+services:
+  ssserver:
+    image: ghcr.io/shadowsocks/ssserver-rust:latest
+    container_name: ssserver-rust
+    restart: always
+    ports:
+      - "SSSERVER_PORT_PLACEHOLDER:SSSERVER_PORT_PLACEHOLDER/tcp"
+      - "SSSERVER_PORT_PLACEHOLDER:SSSERVER_PORT_PLACEHOLDER/udp"
+    volumes:
+      - ./config.json:/etc/shadowsocks-rust/config.json:ro
