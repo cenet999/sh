@@ -3565,7 +3565,13 @@ ldnmp_Proxy() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}错误: ${gl_bai}Nginx 容器重载失败。"
+		echo "如果你是反代 Docker 应用时遇到这个问题，请先执行："
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3612,7 +3618,13 @@ ldnmp_Proxy_backend() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}错误: ${gl_bai}Nginx 容器重载失败。"
+		echo "如果你是反代 Docker 应用时遇到这个问题，请先执行："
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3793,7 +3805,13 @@ ldnmp_Proxy_backend_stream() {
 
 	sed -i "s/# 动态添加/$upstream_servers/g" /home/web/stream.d/$proxy_name.conf
 
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}错误: ${gl_bai}Nginx 容器重载失败。"
+		echo "如果你是反代 Docker 应用时遇到这个问题，请先执行："
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	clear
 	echo "您的 $webname 搭建好了！"
 	echo "------------------------"
