@@ -15582,7 +15582,7 @@ while true; do
 	  echo -e "${gl_kjlan}111. ${color111}多格式文件转换工具                  ${gl_kjlan}112. ${color112}Lucky大内网穿透工具"
 	  echo -e "${gl_kjlan}113. ${color113}Firefox浏览器                       ${gl_kjlan}114. ${color114}OpenClaw机器人管理工具${gl_huang}★${gl_bai}"
 	  echo -e "${gl_kjlan}115. ${color115}V2RayA代理管理面板                  ${gl_kjlan}116. ${color116}Shadowsocks Rust代理服务端"
-	  echo -e "${gl_kjlan}117. ${color117}SQL Server数据库服务"
+	  echo -e "${gl_kjlan}117. ${color117}SQL Server数据库服务                ${gl_kjlan}118. ${color118}re:Director重定向服务"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}第三方应用列表"
   	  echo -e "${gl_kjlan}想要让你的应用出现在这里？查看开发者指南: ${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
@@ -19423,6 +19423,52 @@ EOF
 				clear
 				echo "更新完成"
 				echo "连接信息保存在: ${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "应用已卸载"
+			}
+
+		docker_app_plus
+		  ;;
+
+	  118|re-director|redirector|redirect)
+
+			local app_id="118"
+			local app_name="re:Director重定向服务"
+			local app_text="一个自托管的重定向管理服务，适合统一管理短链接、域名跳转和 301/302/307/308 重定向。"
+			local app_url="项目地址: ${gh_https_url}github.com/re-Director/re-director"
+			local docker_name="re-director"
+			local app_workdir="/home/docker/re-director"
+			local docker_port="8118"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "安装完成"
+				check_docker_app_ip
+				echo "提示：把需要跳转的域名解析到本机，再到面板里创建对应的重定向规则即可。"
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "更新完成"
+				check_docker_app_ip
 			}
 
 			docker_app_uninstall() {

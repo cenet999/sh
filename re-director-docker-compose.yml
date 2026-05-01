@@ -1,0 +1,14 @@
+name: re-director
+
+services:
+  re-director:
+    image: jensknipper/re-director:0.0.8
+    container_name: re-director
+    restart: always
+    ports:
+      - "RE_DIRECTOR_PORT_PLACEHOLDER:80"
+    volumes:
+      - re-director-data:/data
+
+volumes:
+  re-director-data:

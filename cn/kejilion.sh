@@ -15582,6 +15582,7 @@ while true; do
 	  echo -e "${gl_kjlan}111. ${color111}多格式文件转换工具                  ${gl_kjlan}112. ${color112}Lucky大内网穿透工具"
 	  echo -e "${gl_kjlan}113. ${color113}Firefox浏览器                       ${gl_kjlan}114. ${color114}OpenClaw机器人管理工具${gl_huang}★${gl_bai}"
 	  echo -e "${gl_kjlan}115. ${color115}V2RayA代理管理面板                  ${gl_kjlan}116. ${color116}Shadowsocks Rust代理服务端"
+	  echo -e "${gl_kjlan}117. ${color117}SQL Server数据库服务                ${gl_kjlan}118. ${color118}re:Director重定向服务"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}第三方应用列表"
   	  echo -e "${gl_kjlan}想要让你的应用出现在这里？查看开发者指南: ${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
@@ -19361,6 +19362,117 @@ EOF
 			rm -rf /home/docker/shadowsocks-rust
 			echo "应用已卸载"
 		}
+
+		docker_app_plus
+		  ;;
+
+	  117|sqlserver|mssql|SQLServer|SQLSERVER)
+
+			local app_id="117"
+			local app_name="SQL Server数据库服务"
+			local app_text="微软 SQL Server 数据库。它不是网页面板，适合给程序、Navicat、DBeaver 这类客户端连接使用。"
+			local app_url="项目地址: ${gh_https_url}github.com/microsoft/mssql-docker"
+			local docker_name="sqlserver"
+			local app_workdir="/home/docker/sqlserver"
+			local docker_port="1433"
+			local app_size="5"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}/backup"
+				cd "${app_workdir}"
+
+				read -e -p "设置 SA 密码，回车默认使用 YourStrong!Passw0rd: " sa_password
+				local sa_password=${sa_password:-YourStrong!Passw0rd}
+
+				cat > "${app_workdir}/.env" <<EOF
+SQLSERVER_PORT=${docker_port}
+MSSQL_SA_PASSWORD=${sa_password}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+端口: ${docker_port}
+用户名: sa
+密码: ${sa_password}
+数据库类型: Microsoft SQL Server
+备份目录: ${app_workdir}/backup
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+
+				docker compose up -d
+
+				clear
+				echo "安装完成"
+				echo "连接数据库这样填："
+				echo "地址：你的服务器IP或域名"
+				echo "端口：${docker_port}"
+				echo "用户名：sa"
+				echo "密码：${sa_password}"
+				echo "说明：这是数据库服务，不是网页应用。"
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "更新完成"
+				echo "连接信息保存在: ${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "应用已卸载"
+			}
+
+		docker_app_plus
+		  ;;
+
+	  118|re-director|redirector|redirect)
+
+			local app_id="118"
+			local app_name="re:Director重定向服务"
+			local app_text="一个自托管的重定向管理服务，适合统一管理短链接、域名跳转和 301/302/307/308 重定向。"
+			local app_url="项目地址: ${gh_https_url}github.com/re-Director/re-director"
+			local docker_name="re-director"
+			local app_workdir="/home/docker/re-director"
+			local docker_port="8118"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "安装完成"
+				check_docker_app_ip
+				echo "提示：把需要跳转的域名解析到本机，再到面板里创建对应的重定向规则即可。"
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "更新完成"
+				check_docker_app_ip
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "应用已卸载"
+			}
 
 		docker_app_plus
 		  ;;
