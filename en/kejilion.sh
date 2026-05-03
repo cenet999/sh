@@ -876,7 +876,7 @@ close_port() {
 		iptables -D INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null
 		iptables -D INPUT -p udp --dport $port -j ACCEPT 2>/dev/null
 
-		# Add shutdown rule
+		# Add a shutdown rule
 		if ! iptables -C INPUT -p tcp --dport $port -j DROP 2>/dev/null; then
 			iptables -I INPUT 1 -p tcp --dport $port -j DROP
 		fi
@@ -2310,7 +2310,7 @@ check_nginx_compression() {
 
 	# Check whether zstd is on and uncommented (the whole line starts with zstd on;)
 	if grep -qE '^\s*zstd\s+on;' "$CONFIG_FILE"; then
-		zstd_status="zstd compression is enabled"
+		zstd_status="zstd compression is on"
 	else
 		zstd_status=""
 	fi
@@ -2504,11 +2504,23 @@ ip_address
 
 
 if [ -n "$ipv4_address" ]; then
-	echo "http://$ipv4_address:${docker_port}"
+	if [ "${docker_access_mode:-http}" = "raw" ]; then
+		echo "$ipv4_address:${docker_port}"
+	else
+		echo "http://$ipv4_address:${docker_port}"
+	fi
 fi
 
 if [ -n "$ipv6_address" ]; then
-	echo "http://[$ipv6_address]:${docker_port}"
+	if [ "${docker_access_mode:-http}" = "raw" ]; then
+		echo "[$ipv6_address]:${docker_port}"
+	else
+		echo "http://[$ipv6_address]:${docker_port}"
+	fi
+fi
+
+if [ "${docker_access_mode:-http}" = "raw" ]; then
+	return
 fi
 
 local search_pattern1="$ipv4_address:${docker_port}"
@@ -2932,28 +2944,40 @@ while true; do
 			send_stats "uninstall$docker_name"
 			;;
 
-		5)
-			echo "${docker_name}Domain name access settings"
-			send_stats "${docker_name}Domain name access settings"
-			add_yuming
-			ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
-			block_container_port "$docker_name" "$ipv4_address"
-			;;
+			5)
+				echo "${docker_name}Domain name access settings"
+				send_stats "${docker_name}Domain name access settings"
+				add_yuming
+				ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					block_host_port "$docker_port" "$ipv4_address"
+				else
+					block_container_port "$docker_name" "$ipv4_address"
+				fi
+				;;
 
 		6)
 			echo "Domain name format example.com without https://"
 			web_del
 			;;
 
-		7)
-			send_stats "Allow IP access${docker_name}"
-			clear_container_rules "$docker_name" "$ipv4_address"
-			;;
+			7)
+				send_stats "Allow IP access${docker_name}"
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					clear_host_port_rules "$docker_port" "$ipv4_address"
+				else
+					clear_container_rules "$docker_name" "$ipv4_address"
+				fi
+				;;
 
-		8)
-			send_stats "Block IP access${docker_name}"
-			block_container_port "$docker_name" "$ipv4_address"
-			;;
+			8)
+				send_stats "Block IP access${docker_name}"
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					block_host_port "$docker_port" "$ipv4_address"
+				else
+					block_container_port "$docker_name" "$ipv4_address"
+				fi
+				;;
 
 		*)
 			break
@@ -3037,26 +3061,38 @@ docker_app_plus() {
 				send_stats "$app_nameuninstall"
 				;;
 
-			5)
-				echo "${docker_name}Domain name access settings"
-				send_stats "${docker_name}Domain name access settings"
-				add_yuming
-				ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
-				block_container_port "$docker_name" "$ipv4_address"
+				5)
+					echo "${docker_name}Domain name access settings"
+					send_stats "${docker_name}Domain name access settings"
+					add_yuming
+					ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						block_host_port "$docker_port" "$ipv4_address"
+					else
+						block_container_port "$docker_name" "$ipv4_address"
+					fi
 
-				;;
+					;;
 			6)
 				echo "Domain name format example.com without https://"
 				web_del
 				;;
-			7)
-				send_stats "Allow IP access${docker_name}"
-				clear_container_rules "$docker_name" "$ipv4_address"
-				;;
-			8)
-				send_stats "Block IP access${docker_name}"
-				block_container_port "$docker_name" "$ipv4_address"
-				;;
+				7)
+					send_stats "Allow IP access${docker_name}"
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						clear_host_port_rules "$docker_port" "$ipv4_address"
+					else
+						clear_container_rules "$docker_name" "$ipv4_address"
+					fi
+					;;
+				8)
+					send_stats "Block IP access${docker_name}"
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						block_host_port "$docker_port" "$ipv4_address"
+					else
+						block_container_port "$docker_name" "$ipv4_address"
+					fi
+					;;
 			*)
 				break
 				;;
@@ -3529,7 +3565,13 @@ ldnmp_Proxy() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}mistake:${gl_bai}Nginx container reload failed."
+		echo "If you encounter this problem when reversing a Docker application, please execute:"
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3576,7 +3618,13 @@ ldnmp_Proxy_backend() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}mistake:${gl_bai}Nginx container reload failed."
+		echo "If you encounter this problem when reversing a Docker application, please execute:"
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3757,7 +3805,13 @@ ldnmp_Proxy_backend_stream() {
 
 	sed -i "s/# dynamically add/$upstream_servers/g" /home/web/stream.d/$proxy_name.conf
 
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}mistake:${gl_bai}Nginx container reload failed."
+		echo "If you encounter this problem when reversing a Docker application, please execute:"
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	clear
 	echo "your$webnameIt's built!"
 	echo "------------------------"
@@ -5080,7 +5134,7 @@ fetch_github_ssh_keys() {
 	local base_dir="${2:-$HOME}"
 
 	echo "Before proceeding, make sure you have added your SSH public key to your GitHub account:"
-	echo "1. Login${gh_https_url}github.com/settings/keys"
+	echo "1. Log in${gh_https_url}github.com/settings/keys"
 	echo "2. Click New SSH key or Add SSH key"
 	echo "3. Title can be filled in as desired (for example: Home Laptop 2026)"
 	echo "4. Paste the contents of the local public key (usually the entire contents of ~/.ssh/id_ed25519.pub or id_rsa.pub) into the Key field"
@@ -7083,7 +7137,7 @@ mount_partition() {
 		return 1
 	fi
 
-	echo "The partition was successfully mounted to$MOUNT_POINT"
+	echo "Partition successfully mounted to$MOUNT_POINT"
 
 	# Check /etc/fstab to see if the UUID or mount point already exists
 	if grep -qE "UUID=$UUID|[[:space:]]$MOUNT_POINT[[:space:]]" /etc/fstab; then
@@ -7199,7 +7253,7 @@ disk_manager() {
 	send_stats "Hard disk management function"
 	while true; do
 		clear
-		echo "Hard drive partition management"
+		echo "Hard disk partition management"
 		echo -e "${gl_huang}This feature is under internal testing and should not be used in a production environment.${gl_bai}"
 		echo "------------------------"
 		list_partitions
@@ -8069,7 +8123,7 @@ docker_ssh_migration() {
 				local VOL_ARGS=""
 				for path in $VOL_PATHS; do VOL_ARGS+="-v $path:$path "; done
 
-				# mirror
+				# Mirror
 				local IMAGE
 				IMAGE=$(jq -r '.[0].Config.Image' "$inspect_file")
 
@@ -12085,7 +12139,7 @@ PYTHON_EOF
 
 			echo "1) Install/enable plugin"
 			echo "2) Delete/disable plugins"
-			echo "0) Return"
+			echo "0) return"
 			read -e -p "Please select an action:" plugin_action
 
 			[ "$plugin_action" = "0" ] && break
@@ -12213,7 +12267,7 @@ PYTHON_EOF
 
 			echo "1) Installation skills"
 			echo "2) Delete skills"
-			echo "0) Return"
+			echo "0) return"
 			read -e -p "Please select an action:" skill_action
 
 			[ "$skill_action" = "0" ] && break
@@ -14442,7 +14496,7 @@ print(json.dumps(data, indent=2))
 		if openclaw_has_command openclaw && echo "$json_payload" | openclaw approvals set --stdin >/dev/null 2>&1; then
 			return 0
 		fi
-		# Fallback: write file directly
+		# Fallback: Write the file directly
 		echo "$json_payload" > "$approvals_file"
 	}
 
@@ -15479,7 +15533,7 @@ while true; do
 
 	  echo -e "${gl_kjlan}1.   ${color1}Pagoda panel official version${gl_kjlan}2.   ${color2}aaPanel Pagoda International Version"
 	  echo -e "${gl_kjlan}3.   ${color3}1Panel new generation management panel${gl_kjlan}4.   ${color4}NginxProxyManager visualization panel"
-	  echo -e "${gl_kjlan}5.   ${color5}OpenList multi-store file list program${gl_kjlan}6.   ${color6}Ubuntu Remote Desktop Web Version"
+	  echo -e "${gl_kjlan}5.   ${color5}OpenList multi-store file list program${gl_kjlan}6.   ${color6}Ubuntu Remote Desktop Web Edition"
 	  echo -e "${gl_kjlan}7.   ${color7}Nezha Probe VPS Monitoring Panel${gl_kjlan}8.   ${color8}QB offline BT magnetic download panel"
 	  echo -e "${gl_kjlan}9.   ${color9}Poste.io mail server program${gl_kjlan}10.  ${color10}RocketChat multi-person online chat system"
 	  echo -e "${gl_kjlan}-------------------------"
@@ -15545,7 +15599,8 @@ while true; do
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}111. ${color111}Multi-format file conversion tool${gl_kjlan}112. ${color112}Lucky large intranet penetration tool"
 	  echo -e "${gl_kjlan}113. ${color113}Firefox browser${gl_kjlan}114. ${color114}OpenClaw bot management tool${gl_huang}★${gl_bai}"
-	  echo -e "${gl_kjlan}115. ${color115}v2rayA proxy management panel"
+	  echo -e "${gl_kjlan}115. ${color115}V2RayA agent management panel${gl_kjlan}116. ${color116}Shadowsocks Rust proxy server"
+	  echo -e "${gl_kjlan}117. ${color117}SQL Server database service${gl_kjlan}118. ${color118}re:Director redirection service"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}Third-party application list"
   	  echo -e "${gl_kjlan}Want your app to appear here? Check out the developer guide:${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
@@ -17589,7 +17644,7 @@ while true; do
 
 		}
 
-		local docker_describe="Is a lightweight, high-performance music streaming server"
+		local docker_describe="It is a lightweight, high-performance music streaming server"
 		local docker_url="Official website introduction: https://www.navidrome.org/"
 		local docker_use=""
 		local docker_passwd=""
@@ -18173,7 +18228,7 @@ while true; do
 
 		}
 
-		local docker_describe="A program for watching movies and live broadcasts together remotely. It provides simultaneous viewing, live broadcast, chat and other functions"
+		local docker_describe="A program to watch movies and live broadcasts together remotely. It provides simultaneous viewing, live broadcast, chat and other functions"
 		local docker_url="Official website introduction:${gh_https_url}github.com/synctv-org/synctv"
 		local docker_use="echo \"Initial account and password: root. Please change the login password in time after logging in\""
 		local docker_passwd=""
@@ -19150,11 +19205,12 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 
 	  112|lucky)
 
-		local app_id="112"
-		local docker_name="lucky"
-		local docker_img="gdy666/lucky:v2"
-		# Since Lucky uses the host network mode, the port here is only for record/explanation reference and is actually controlled by the application itself (default 16601)
-		local docker_port=8112
+			local app_id="112"
+			local docker_name="lucky"
+			local docker_img="gdy666/lucky:v2"
+			local docker_network_mode="host"
+			# Since Lucky uses the host network mode, the port here is only for record/explanation reference and is actually controlled by the application itself (default 16601)
+			local docker_port=8112
 
 		docker_rum() {
 
@@ -19215,38 +19271,229 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 
 	  115|v2raya|V2RayA|v2rayA)
 
-		local app_id="115"
-		local app_name="v2rayA proxy management panel"
-		local app_text="A self-hosted proxy dashboard for managing v2ray/xray nodes and system proxy through the web."
-		local app_url="Project address:${gh_https_url}github.com/v2rayA/v2rayA"
-		local docker_name="v2raya"
-		local docker_port="8017"
-		local app_size="1"
+			local app_id="115"
+			local app_name="V2RayA agent management panel"
+			local app_text="A self-hosted agent management panel suitable for web management of v2ray/xray nodes and system agents."
+			local app_url="Project address:${gh_https_url}github.com/v2rayA/v2rayA"
+			local docker_name="v2raya"
+			local docker_port="8115"
+			local docker_network_mode="host"
+			local app_size="1"
 
-		docker_app_install() {
-			mkdir -p /home/docker/v2raya
-			cd /home/docker/v2raya
+			docker_app_install() {
+				mkdir -p /home/docker/v2raya/config
+				cd /home/docker/v2raya
 
-			curl -o /home/docker/v2raya/docker-compose.yml ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/v2raya-docker-compose.yml
-			sed -i "s/V2RAYA_PORT_PLACEHOLDER/${docker_port}/g" /home/docker/v2raya/docker-compose.yml
+				curl -o /home/docker/v2raya/docker-compose.yml ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/v2raya-docker-compose.yml
+				sed -i "s/V2RAYA_PORT_PLACEHOLDER/${docker_port}/g" /home/docker/v2raya/docker-compose.yml
 
-			docker compose up -d
+				docker compose up -d
 
-			clear
-			echo "Installation completed"
-			check_docker_app_ip
-		}
+				clear
+				echo "Installation completed"
+				check_docker_app_ip
+				echo "After opening it for the first time, just follow the page prompts to complete the initialization."
+			}
 
-		docker_app_update() {
-			cd /home/docker/v2raya/ && docker compose down --rmi all
-			docker_app_install
-		}
+			docker_app_update() {
+				cd /home/docker/v2raya/ && docker compose pull && docker compose up -d
+				clear
+				echo "Update completed"
+				check_docker_app_ip
+			}
 
 		docker_app_uninstall() {
 			cd /home/docker/v2raya/ && docker compose down --rmi all
 			rm -rf /home/docker/v2raya
 			echo "App has been uninstalled"
 		}
+
+		docker_app_plus
+		  ;;
+
+	  116|shadowsocks-rust|ssserver-rust|shadowsocks)
+
+			local app_id="116"
+			local app_name="Shadowsocks Rust proxy server"
+			local app_text="Lightweight proxy service, suitable for direct connection to mobile clients or computer clients. It is not a web page panel. The client only needs to fill in the server IP, port, password, and encryption method."
+			local app_url="Project address:${gh_https_url}github.com/shadowsocks/shadowsocks-rust"
+			local docker_name="ssserver-rust"
+			local app_workdir="/home/docker/shadowsocks-rust"
+			local docker_port="8388"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				read -e -p "Set the Shadowsocks password and press Enter to automatically generate a random password:" ss_password
+				local ss_password=${ss_password:-$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)}
+
+				read -e -p "Set the encryption method and press Enter to default to chacha20-ietf-poly1305:" ss_method
+				local ss_method=${ss_method:-chacha20-ietf-poly1305}
+				local ss_password_safe=$(printf '%s' "$ss_password" | sed 's/\\/\\\\/g; s/"/\\"/g')
+				local ss_method_safe=$(printf '%s' "$ss_method" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+				cat > "${app_workdir}/config.json" <<EOF
+{
+  "server": "0.0.0.0",
+  "server_port": ${docker_port},
+  "password": "${ss_password_safe}",
+  "method": "${ss_method_safe}",
+  "mode": "tcp_and_udp"
+}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+服务器端口: ${docker_port}
+密码: ${ss_password}
+加密方式: ${ss_method}
+传输协议: TCP + UDP
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/shadowsocks-rust-docker-compose.yml
+				sed -i "s/SSSERVER_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "Installation completed"
+				echo "The client fills in this:"
+				echo "Address: Your server IP or domain name"
+				echo "port:${docker_port}"
+				echo "password:${ss_password}"
+				echo "encryption:${ss_method}"
+				echo "Note: This is a proxy service, not a web application, and cannot be reversed through the web page."
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/shadowsocks-rust-docker-compose.yml
+				sed -i "s/SSSERVER_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "Update completed"
+				echo "The current client parameters are saved in:${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "App has been uninstalled"
+			}
+
+		docker_app_plus
+		  ;;
+
+	  117|sqlserver|mssql|SQLServer|SQLSERVER)
+
+			local app_id="117"
+			local app_name="SQL Server database service"
+			local app_text="Microsoft SQL Server database. It is not a web panel and is suitable for connecting to clients such as programs, Navicat, and DBeaver."
+			local app_url="Project address:${gh_https_url}github.com/microsoft/mssql-docker"
+			local docker_name="sqlserver"
+			local app_workdir="/home/docker/sqlserver"
+			local docker_port="1433"
+			local app_size="5"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}/backup"
+				cd "${app_workdir}"
+
+				read -e -p "Set the SA password and press Enter to use YourStrong!Passw0rd by default:" sa_password
+				local sa_password=${sa_password:-YourStrong!Passw0rd}
+
+				cat > "${app_workdir}/.env" <<EOF
+SQLSERVER_PORT=${docker_port}
+MSSQL_SA_PASSWORD=${sa_password}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+端口: ${docker_port}
+用户名: sa
+密码: ${sa_password}
+数据库类型: Microsoft SQL Server
+备份目录: ${app_workdir}/backup
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+
+				docker compose up -d
+
+				clear
+				echo "Installation completed"
+				echo "To connect to the database, fill in the following:"
+				echo "Address: Your server IP or domain name"
+				echo "port:${docker_port}"
+				echo "Username: sa"
+				echo "password:${sa_password}"
+				echo "Note: This is a database service, not a web application."
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "Update completed"
+				echo "Connection information is saved in:${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "App has been uninstalled"
+			}
+
+		docker_app_plus
+		  ;;
+
+	  118|re-director|redirector|redirect)
+
+			local app_id="118"
+			local app_name="re:Director redirection service"
+			local app_text="A self-hosted redirect management service suitable for unified management of short links, domain name redirects and 301/302/307/308 redirects."
+			local app_url="Project address:${gh_https_url}github.com/re-Director/re-director"
+			local docker_name="re-director"
+			local app_workdir="/home/docker/re-director"
+			local docker_port="8118"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "Installation completed"
+				check_docker_app_ip
+				echo "Tip: Resolve the domain name that needs to be redirected to the local machine, and then create the corresponding redirection rule in the panel."
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "Update completed"
+				check_docker_app_ip
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "App has been uninstalled"
+			}
 
 		docker_app_plus
 		  ;;
@@ -19274,7 +19521,7 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 				  ssh-keygen -f "/root/.ssh/known_hosts" -R "$remote_ip"
 				  sleep 2  # 添加等待时间
 				  scp -P "$TARGET_PORT" -o StrictHostKeyChecking=no "$latest_tar" "root@$remote_ip:/"
-				  echo "文件已传送至远程服务器/根目录。"
+				  echo "File transferred to remote server/root directory."
 				else
 				  echo "The file to be transferred was not found."
 				fi
@@ -19355,7 +19602,7 @@ linux_work() {
 	  echo -e "Backend workspace"
 	  echo -e "The system will provide you with a workspace that can run permanently in the background, which you can use to perform long-term tasks."
 	  echo -e "Even if you disconnect SSH, the tasks in the workspace will not be interrupted, and the tasks will remain in the background."
-	  echo -e "${gl_huang}hint:${gl_bai}进入工作区后使用Ctrl+b再单独按d，退出工作区！"
+	  echo -e "${gl_huang}hint:${gl_bai}After entering the workspace, use Ctrl+b and then press d alone to exit the workspace!"
 	  echo -e "${gl_kjlan}------------------------"
 	  echo "List of currently existing workspaces"
 	  echo -e "${gl_kjlan}------------------------"
@@ -19365,7 +19612,7 @@ linux_work() {
 	  echo -e "${gl_kjlan}2.   ${gl_bai}Work Area 2"
 	  echo -e "${gl_kjlan}3.   ${gl_bai}Work Area 3"
 	  echo -e "${gl_kjlan}4.   ${gl_bai}Work Area 4"
-	  echo -e "${gl_kjlan}5.   ${gl_bai}Workspace No. 5"
+	  echo -e "${gl_kjlan}5.   ${gl_bai}Work Area 5"
 	  echo -e "${gl_kjlan}6.   ${gl_bai}Work Area 6"
 	  echo -e "${gl_kjlan}7.   ${gl_bai}Work Area 7"
 	  echo -e "${gl_kjlan}8.   ${gl_bai}Work Area 8"
@@ -20521,7 +20768,7 @@ EOF
 				echo "------------------------"
 				echo "Europe"
 				echo "11. London, UK time 12. Paris, France time"
-				echo "13. 德国柏林时间             14. 俄罗斯莫斯科时间"
+				echo "13. Berlin, Germany time 14. Moscow, Russia time"
 				echo "15. Utracht Time, Netherlands 16. Madrid Time, Spain"
 				echo "------------------------"
 				echo "America"
@@ -21554,7 +21801,7 @@ echo "------------------------"
 echo -e "${gl_zi}V.PS 6.9 dollars per month Tokyo Softbank 2 cores 1G memory 20G hard drive 1T traffic per month${gl_bai}"
 echo -e "${gl_bai}URL: https://vps.hosting/cart/tokyo-cloud-kvm-vps/?id=148&?affid=1355&?affid=1355${gl_bai}"
 echo "------------------------"
-echo -e "${gl_kjlan}More popular VPS offers${gl_bai}"
+echo -e "${gl_kjlan}More popular VPS deals${gl_bai}"
 echo -e "${gl_bai}Website: https://kejilion.pro/topvps/${gl_bai}"
 echo "------------------------"
 echo ""

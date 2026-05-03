@@ -1213,7 +1213,7 @@ iptables_panel() {
 add_swap() {
 	local new_swap=$1  # 获取传入的参数
 
-	# 取得目前系統中所有的 swap 分區
+	# 取得目前系統中所有的 swap 分割區
 	local swap_partitions=$(grep -E '^/dev/' /proc/swaps | awk '{print $1}')
 
 	# 遍歷並刪除所有的 swap 分割區
@@ -1484,7 +1484,7 @@ ssl_ps
 
 ssl_ps() {
 	echo -e "${gl_huang}已申請的證書到期情況${gl_bai}"
-	echo "網站資訊 證書到期時間"
+	echo "站點資訊 證書到期時間"
 	echo "------------------------"
 	for cert_dir in /etc/letsencrypt/live/*; do
 	  local cert_file="$cert_dir/fullchain.pem"
@@ -1547,9 +1547,9 @@ certs_status() {
 
 	  		  ;;
 	  	  2)
-	  	  	send_stats "导入已有证书"
+	  	  	send_stats "導入已有證書"
 
-			# 定义文件路径
+			# 定義檔案路徑
 			local cert_file="/home/web/certs/${yuming}_cert.pem"
 			local key_file="/home/web/certs/${yuming}_key.pem"
 
@@ -2504,11 +2504,23 @@ ip_address
 
 
 if [ -n "$ipv4_address" ]; then
-	echo "http://$ipv4_address:${docker_port}"
+	if [ "${docker_access_mode:-http}" = "raw" ]; then
+		echo "$ipv4_address:${docker_port}"
+	else
+		echo "http://$ipv4_address:${docker_port}"
+	fi
 fi
 
 if [ -n "$ipv6_address" ]; then
-	echo "http://[$ipv6_address]:${docker_port}"
+	if [ "${docker_access_mode:-http}" = "raw" ]; then
+		echo "[$ipv6_address]:${docker_port}"
+	else
+		echo "http://[$ipv6_address]:${docker_port}"
+	fi
+fi
+
+if [ "${docker_access_mode:-http}" = "raw" ]; then
+	return
 fi
 
 local search_pattern1="$ipv4_address:${docker_port}"
@@ -2775,7 +2787,7 @@ clear_host_port_rules() {
 	install iptables
 
 
-	# 清除封禁所有其他 IP 访问的规则
+	# 清除封鎖所有其他 IP 存取的規則
 	if iptables -C INPUT -p tcp --dport "$port" -j DROP &>/dev/null; then
 		iptables -D INPUT -p tcp --dport "$port" -j DROP
 	fi
@@ -2932,28 +2944,40 @@ while true; do
 			send_stats "解除安裝$docker_name"
 			;;
 
-		5)
-			echo "${docker_name}域名存取設定"
-			send_stats "${docker_name}域名存取設定"
-			add_yuming
-			ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
-			block_container_port "$docker_name" "$ipv4_address"
-			;;
+			5)
+				echo "${docker_name}域名存取設定"
+				send_stats "${docker_name}域名存取設定"
+				add_yuming
+				ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					block_host_port "$docker_port" "$ipv4_address"
+				else
+					block_container_port "$docker_name" "$ipv4_address"
+				fi
+				;;
 
 		6)
 			echo "網域格式 example.com 不含https://"
 			web_del
 			;;
 
-		7)
-			send_stats "允許IP存取${docker_name}"
-			clear_container_rules "$docker_name" "$ipv4_address"
-			;;
+			7)
+				send_stats "允許IP存取${docker_name}"
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					clear_host_port_rules "$docker_port" "$ipv4_address"
+				else
+					clear_container_rules "$docker_name" "$ipv4_address"
+				fi
+				;;
 
-		8)
-			send_stats "阻止IP訪問${docker_name}"
-			block_container_port "$docker_name" "$ipv4_address"
-			;;
+			8)
+				send_stats "阻止IP訪問${docker_name}"
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					block_host_port "$docker_port" "$ipv4_address"
+				else
+					block_container_port "$docker_name" "$ipv4_address"
+				fi
+				;;
 
 		*)
 			break
@@ -3037,26 +3061,38 @@ docker_app_plus() {
 				send_stats "$app_name解除安裝"
 				;;
 
-			5)
-				echo "${docker_name}域名存取設定"
-				send_stats "${docker_name}域名存取設定"
-				add_yuming
-				ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
-				block_container_port "$docker_name" "$ipv4_address"
+				5)
+					echo "${docker_name}域名存取設定"
+					send_stats "${docker_name}域名存取設定"
+					add_yuming
+					ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						block_host_port "$docker_port" "$ipv4_address"
+					else
+						block_container_port "$docker_name" "$ipv4_address"
+					fi
 
-				;;
+					;;
 			6)
 				echo "網域格式 example.com 不含https://"
 				web_del
 				;;
-			7)
-				send_stats "允許IP存取${docker_name}"
-				clear_container_rules "$docker_name" "$ipv4_address"
-				;;
-			8)
-				send_stats "阻止IP訪問${docker_name}"
-				block_container_port "$docker_name" "$ipv4_address"
-				;;
+				7)
+					send_stats "允許IP存取${docker_name}"
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						clear_host_port_rules "$docker_port" "$ipv4_address"
+					else
+						clear_container_rules "$docker_name" "$ipv4_address"
+					fi
+					;;
+				8)
+					send_stats "阻止IP訪問${docker_name}"
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						block_host_port "$docker_port" "$ipv4_address"
+					else
+						block_container_port "$docker_name" "$ipv4_address"
+					fi
+					;;
 			*)
 				break
 				;;
@@ -3260,7 +3296,7 @@ EOF
 	fail2ban-client status $jail_name || true
 }
 
-# 直接打开主配置/覆盖配置编辑（nano）
+# 直接開啟主配置/覆蓋配置編輯（nano）
 # 優先編輯 /etc/fail2ban/jail.d/sshd.local（更安全），若不存在則創建
 f2b_edit_config() {
 	root_use
@@ -3529,7 +3565,13 @@ ldnmp_Proxy() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}錯誤:${gl_bai}Nginx 容器重載失敗。"
+		echo "如果你是反代 Docker 應用程式時遇到這個問題，請先執行："
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3576,7 +3618,13 @@ ldnmp_Proxy_backend() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}錯誤:${gl_bai}Nginx 容器重載失敗。"
+		echo "如果你是反代 Docker 應用程式時遇到這個問題，請先執行："
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3757,7 +3805,13 @@ ldnmp_Proxy_backend_stream() {
 
 	sed -i "s/# 動態添加/$upstream_servers/g" /home/web/stream.d/$proxy_name.conf
 
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}錯誤:${gl_bai}Nginx 容器重載失敗。"
+		echo "如果你是反代 Docker 應用程式時遇到這個問題，請先執行："
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	clear
 	echo "您的$webname搭建好了！"
 	echo "------------------------"
@@ -3865,7 +3919,7 @@ ldnmp_web_status() {
 		case $sub_choice in
 			1)
 				send_stats "申請網域證書"
-				read -e -p "请输入你的域名: " yuming
+				read -e -p "請輸入你的網域名稱:" yuming
 				install_certbot
 				docker run --rm -v /etc/letsencrypt/:/etc/letsencrypt certbot/certbot delete --cert-name "$yuming" -n 2>/dev/null
 				install_ssltls
@@ -3876,7 +3930,7 @@ ldnmp_web_status() {
 			2)
 				send_stats "克隆站點域名"
 				read -e -p "請輸入舊網域名稱:" oddyuming
-				read -e -p "請輸入新網域名稱:" yuming
+				read -e -p "請輸入新網域:" yuming
 				install_certbot
 				install_ssltls
 				certs_status
@@ -3917,7 +3971,7 @@ ldnmp_web_status() {
 				send_stats "建立關聯站點"
 				echo -e "為現有的站點再關聯一個新網域用於訪問"
 				read -e -p "請輸入現有的網域名稱:" oddyuming
-				read -e -p "請輸入新網域名稱:" yuming
+				read -e -p "請輸入新網域:" yuming
 				install_certbot
 				install_ssltls
 				certs_status
@@ -4765,7 +4819,7 @@ linux_clean() {
 
 bbr_on() {
 
-# 统一写入到 sysctl.d 以防与内核调优模块打架
+# 統一寫入到 sysctl.d 以防與核心調優模組打架
 local CONF="/etc/sysctl.d/99-kejilion-bbr.conf"
 mkdir -p /etc/sysctl.d
 echo "net.core.default_qdisc=fq" > "$CONF"
@@ -5124,7 +5178,7 @@ sshkey_panel() {
   	  echo "將會產生金鑰對，更安全的方式SSH登錄"
 	  echo "------------------------"
 	  echo "1. 產生新密鑰對 2. 手動輸入已有公鑰"
-	  echo "3. 从GitHub导入已有公钥          4. 从URL导入已有公钥"
+	  echo "3. 從GitHub導入已有公鑰 4. 從網址導入已有公鑰"
 	  echo "5. 編輯公鑰檔案 6. 查看本機金鑰"
 	  echo "------------------------"
 	  echo "0. 返回上一級選單"
@@ -6289,7 +6343,7 @@ Kernel_optimize() {
 	  echo -e "2. 均衡最佳化模式： 在效能與資源消耗之間取得平衡，適合日常使用。"
 	  echo -e "3. 網站最佳化模式： 針對網站伺服器最佳化，超高並發連線佇列。"
 	  echo -e "4. 直播最佳化模式： 針對直播推流優化，UDP 緩衝區加大，減少延遲。"
-	  echo -e "5. 游戏服优化模式：     针对游戏服务器优化，低延迟优先。"
+	  echo -e "5. 遊戲服最佳化模式： 針對遊戲伺服器最佳化，低延遲優先。"
 	  echo -e "6. 還原預設設定： 將系統設定還原為預設配置。"
 	  echo -e "7. 自動調優： 依測試資料自動調優核心參數。${gl_huang}★${gl_bai}"
 	  echo "--------------------"
@@ -6443,7 +6497,7 @@ else
 	echo "${bianse}" >> ~/.profile
 	# source ~/.profile
 fi
-echo -e "${gl_lv}變更完成。重新连接SSH后可查看变化！${gl_bai}"
+echo -e "${gl_lv}變更完成。重新連接SSH後可查看變化！${gl_bai}"
 
 hash -r
 break_end
@@ -6596,7 +6650,7 @@ create_backup() {
 	echo "- 備份單一目錄: /var/www"
 	echo "- 備份多個目錄: /etc /home /var/log"
 	echo "- 直接回車將使用預設目錄 (/etc /usr /home)"
-	read -e -p "请输入要备份的目录（多个目录用空格分隔，直接回车则使用默认目录）：" input
+	read -e -p "請輸入要備份的目錄（多個目錄以空格分隔，直接回車則使用預設目錄）：" input
 
 	# 如果使用者沒有輸入目錄，則使用預設目錄
 	if [ -z "$input" ]; then
@@ -6677,7 +6731,7 @@ list_backups() {
 delete_backup() {
 	send_stats "刪除備份"
 
-	read -e -p "请输入要删除的备份文件名: " BACKUP_NAME
+	read -e -p "請輸入要刪除的備份檔名:" BACKUP_NAME
 
 	# 檢查備份檔案是否存在
 	if [ ! -f "$BACKUP_DIR/$BACKUP_NAME" ]; then
@@ -6691,7 +6745,7 @@ delete_backup() {
 	if [ $? -eq 0 ]; then
 		echo "備份刪除成功！"
 	else
-		echo "备份删除失败！"
+		echo "備份刪除失敗！"
 		exit 1
 	fi
 }
@@ -6967,7 +7021,7 @@ use_connection() {
 	else
 		# 使用密碼連接
 		if ! command -v sshpass &> /dev/null; then
-			echo "错误：未安装 sshpass，请先安装 sshpass。"
+			echo "錯誤：未安裝 sshpass，請先安裝 sshpass。"
 			echo "安裝方法："
 			echo "  - Ubuntu/Debian: apt install sshpass"
 			echo "  - CentOS/RHEL: yum install sshpass"
@@ -7087,7 +7141,7 @@ mount_partition() {
 
 	# 檢查 /etc/fstab 是否已經存在 UUID 或掛載點
 	if grep -qE "UUID=$UUID|[[:space:]]$MOUNT_POINT[[:space:]]" /etc/fstab; then
-		echo "/etc/fstab 中已存在该分区记录，跳过写入"
+		echo "/etc/fstab 中已存在該分區記錄，跳過寫入"
 		return 0
 	fi
 
@@ -7117,7 +7171,7 @@ unmount_partition() {
 		echo "分割區卸載成功:$MOUNT_POINT"
 		rmdir "$MOUNT_POINT"
 	else
-		echo "分区卸载失败！"
+		echo "分區卸載失敗！"
 	fi
 }
 
@@ -7160,7 +7214,7 @@ format_partition() {
 		*) echo "無效的選擇！"; return ;;
 	esac
 
-	# 确认格式化
+	# 確認格式化
 	read -e -p "確認格式化分割區 /dev/$PARTITION為$FS_TYPE嗎？ (y/n):" CONFIRM
 	if [ "$CONFIRM" != "y" ]; then
 		echo "操作已取消。"
@@ -8099,8 +8153,8 @@ docker_ssh_migration() {
 	restore_docker() {
 
 		send_stats "Docker還原"
-		read -e -p  "请输入要还原的备份目录: " BACKUP_DIR
-		[[ ! -d "$BACKUP_DIR" ]] && { echo -e "${gl_hong}备份目录不存在${gl_bai}"; return; }
+		read -e -p  "請輸入要還原的備份目錄:" BACKUP_DIR
+		[[ ! -d "$BACKUP_DIR" ]] && { echo -e "${gl_hong}備份目錄不存在${gl_bai}"; return; }
 
 		echo -e "${gl_kjlan}開始執行還原操作...${gl_bai}"
 
@@ -8778,7 +8832,7 @@ linux_Oracle() {
 		  1)
 			  clear
 			  echo "活躍腳本: CPU佔用10-20% 記憶體佔用20%"
-			  read -e -p "确定安装吗？ (Y/N):" choice
+			  read -e -p "確定安裝嗎？ (Y/N):" choice
 			  case "$choice" in
 				[Yy])
 
@@ -9417,7 +9471,7 @@ linux_ldnmp() {
 	  clear
 	  echo -e "[${gl_huang}6/6${gl_bai}] 資料庫管理"
 	  echo "-------------"
-	  read -e -p "1. 我搭建新站        2. 我搭建老站有数据库备份： " use_db
+	  read -e -p "1. 我搭建新站 2. 我搭建老站有資料庫備份：" use_db
 	  case $use_db in
 		  1)
 			  echo
@@ -9781,7 +9835,7 @@ linux_ldnmp() {
 		  install_certbot
 		  install_ldnmp
 	  else
-		  echo "没有找到压缩包。"
+		  echo "沒有找到壓縮包。"
 	  fi
 
 	  ;;
@@ -10357,7 +10411,7 @@ for name, provider in list(providers.items()):
     if isinstance(primary_ref, str) and primary_ref in (local_refs - expected_refs):
         set_primary_ref(defaults, first_ref)
         changed = True
-        summary.append(f'🔁 默认模型已兜底替换: {primary_ref} -> {first_ref}')
+        summary.append(f'🔁 預設模型已兜底替換: {primary_ref} -> {first_ref}')
 
     for fk in ('modelFallback', 'imageModelFallback'):
         val = defaults.get(fk)
@@ -10645,7 +10699,7 @@ EOF
 
 	add-openclaw-provider-interactive() {
 		send_stats "OpenClaw API新增"
-		echo "=== 互動式加入 OpenClaw Provider (全量模型) ==="
+		echo "=== 互動式新增 OpenClaw Provider (全量模型) ==="
 
 		# 1. Provider 名稱
 		read -erp "請輸入 Provider 名稱 (如: deepseek):" provider_name
@@ -10985,7 +11039,7 @@ if not base_url or not api_key or not isinstance(model_list, list) or not model_
     raise SystemExit(3)
 
 if api not in SUPPORTED_APIS:
-    print(f'ℹ️ provider {target} 当前 api={api}，但脚本已不再探测/纠正协议；请手动设置为 openai-completions 或 openai-responses')
+    print(f'ℹ️ provider {target} 目前 api={api}，但腳本已不再探測/修正協定；請手動設定為 openai-completions 或 openai-responses')
 
 protocol_msg = None
 
@@ -12043,7 +12097,7 @@ PYTHON_EOF
 				fi
 			fi
 
-			echo "⚠️ plugins.allow 移除失败，请手动检查: $config_file"
+			echo "⚠️ plugins.allow 移除失敗，請手動檢查:$config_file"
 			return 1
 		}
 
@@ -12079,7 +12133,7 @@ PYTHON_EOF
 			echo ""
 			echo "⚙️ 功能擴充:"
 			echo "- [lobster] # 審批流 (附人工確認)"
-			echo "  - [voice-call]   	# 语音通话能力"
+			echo "- [voice-call] # 語音通話能力"
 			echo "- [nostr] # 加密隱私聊天"
 			echo "--------------------------------------------------------"
 
@@ -12154,12 +12208,12 @@ PYTHON_EOF
 						failed_list="$failed_list $plugin_id"
 					fi
 				else
-					echo "🗑️ 正在删除/禁用插件: $plugin_id"
+					echo "🗑️ 正在刪除/停用插件:$plugin_id"
 					openclaw plugins disable "$plugin_id" >/dev/null 2>&1
 					if openclaw plugins uninstall "$plugin_id"; then
 						echo "✅ 已卸載:$plugin_id"
 					else
-						echo "⚠️ 卸载失败，可能为预装插件，仅禁用: $plugin_id"
+						echo "⚠️ 卸載失敗，可能為預先安裝插件，僅停用:$plugin_id"
 					fi
 					sync_openclaw_plugin_denylist "$plugin_id" >/dev/null 2>&1
 					success_list="$success_list $plugin_id"
@@ -12804,7 +12858,7 @@ if os.path.isdir(agents_root):
 		fi
 
 		echo "備份模式："
-		echo "1. 安全模式（默认，推荐）：workspace + openclaw.json + extensions/skills/prompts/tools（如存在）"
+		echo "1. 安全模式（默認，建議）：workspace + openclaw.json + extensions/skills/prompts/tools（如存在）"
 		echo "2. 完整模式（含更多狀態，敏感風險較高）"
 		read -e -p "請選擇備份模式（預設 1）:" export_mode
 		[ -z "$export_mode" ] && export_mode="1"
@@ -13432,7 +13486,7 @@ PY
 		if [ "$qmd_ok" = "true" ]; then
 			OPENCLAW_MEMORY_RECOMMEND_REASON+=("QMD 可用")
 		else
-			OPENCLAW_MEMORY_RECOMMEND_REASON+=("未检测到 QMD")
+			OPENCLAW_MEMORY_RECOMMEND_REASON+=("未檢測到 QMD")
 		fi
 		if [ -n "$model_path" ]; then
 			OPENCLAW_MEMORY_RECOMMEND_REASON+=("本地模型路徑:$model_path")
@@ -13625,7 +13679,7 @@ PY
 			echo "地區:$OPENCLAW_MEMORY_COUNTRY"
 		fi
 		if [ -n "$OPENCLAW_MEMORY_HF_BASE" ]; then
-			echo "下载源: $OPENCLAW_MEMORY_HF_BASE"
+			echo "下載來源:$OPENCLAW_MEMORY_HF_BASE"
 		fi
 		echo "最終狀態:"
 		openclaw_memory_render_status
@@ -13947,7 +14001,7 @@ EOF
 			fi
 		else
 			echo "includeDefaultMemory 配置正常。"
-			echo "将执行：清理旧索引 → 全量重建所有智能体索引"
+			echo "將執行：清理舊索引 → 全量重建所有智能體索引"
 			echo ""
 			read -e -p "確認執行？ (Y/n):" confirm_fix
 			if [[ ! "$confirm_fix" =~ ^[Nn]$ ]]; then
@@ -14280,7 +14334,7 @@ EOF
 
 	openclaw_permission_restart_gateway() {
 		if ! openclaw_has_command openclaw; then
-			echo "❌ 未检测到 openclaw，无法重启 OpenClaw Gateway。"
+			echo "❌ 未偵測到 openclaw，無法重新啟動 OpenClaw Gateway。"
 			return 1
 		fi
 		echo "正在重啟 OpenClaw Gateway..."
@@ -14474,7 +14528,7 @@ print(json.dumps(data, indent=2))
 		echo -e "當前綜合安全等級:${current_mode}"
 		echo "---------------------------------------"
 		echo -e "${gl_huang}[應用層 Tool Policy 狀態]${gl_bai}"
-		echo "  Profile (预设): ${current_profile:-(unset)}"
+		echo "Profile (預設): ${current_profile:-(unset)}"
 		echo "Exec 限制: ${current_sec:-(unset)}"
 		echo "審核提示: ${current_ask:-(unset)}"
 		echo "提權開關: ${current_elevated:-(unset)}"
@@ -14941,7 +14995,7 @@ else:
         is_default = item.get("isDefault", False)
         bcount = item.get("bindings", 0)
         default_tag = "[預設]" if is_default else ""
-        print("- 智能体ID: \033[1;36m%s\033[0m%s" % (aid, default_tag))
+        print("- 智能體ID: \033[1;36m%s\033[0m%s" % (aid, default_tag))
         print("身份名稱: %s %s" % (identity, emoji))
         print("模型: %s" % model)
         print("工作目錄: %s" % ws)
@@ -15044,9 +15098,9 @@ for idx,item in enumerate(bindings,1):
 		read -e -p "輸入 yes 確認繼續:" confirm
 		[ "$confirm" = "yes" ] || { echo "已取消"; return 1; }
 		if openclaw agents unbind --agent "$agent_id" --bind "$bind_value"; then
-			echo "✅ 路由绑定移除成功"
+			echo "✅ 路由綁定移除成功"
 		else
-			echo "❌ 路由绑定移除失败"
+			echo "❌ 路由綁定移除失敗"
 			return 1
 		fi
 	}
@@ -15241,7 +15295,7 @@ openclaw_backup_restore_menu() {
 		npm uninstall -g openclaw
 		crontab -l 2>/dev/null | grep -v "s gateway" | crontab -
 		rm -rf "$HOME/.openclaw"
-		[ "$HOME" != "/root" ] && [ -d /root/.openclaw ] && echo "⚠️ 检测到 root 目录下仍存在 /root/.openclaw，如需清理请手动处理"
+		[ "$HOME" != "/root" ] && [ -d /root/.openclaw ] && echo "⚠️ 偵測到 root 目錄下仍存在 /root/.openclaw，如需清理請手動處理"
 		hash -r
 		sed -i "/\b${app_id}\b/d" /home/docker/appno.txt
 		echo "卸載完成"
@@ -15297,7 +15351,7 @@ openclaw_backup_restore_menu() {
 
 		domains=$(openclaw_find_webui_domain)
 		if [ -n "$domains" ]; then
-			echo "網域名稱地址："
+			echo "網域地址："
 			echo "$domains" | while read d; do
 				echo "https://${d}/#token=${token}"
 			done
@@ -15333,14 +15387,14 @@ openclaw_backup_restore_menu() {
 			if command -v jq >/dev/null 2>&1; then
 				tmp_json=$(mktemp)
 				jq 'if .gateway.controlUi == null then .gateway.controlUi = {"allowedOrigins": ["http://127.0.0.1"]} else . end | if (.gateway.controlUi.allowedOrigins | contains([$origin]) | not) then .gateway.controlUi.allowedOrigins += [$origin] else . end' --arg origin "$new_origin" "$config_file" > "$tmp_json" && mv "$tmp_json" "$config_file"
-				echo -e "${gl_kjlan}已將域名${yuming} 加入 allowedOrigins 配置${gl_bai}"
+				echo -e "${gl_kjlan}已將域名${yuming}加入 allowedOrigins 配置${gl_bai}"
 				openclaw gateway restart >/dev/null 2>&1
 			fi
 		fi
 
 		openclaw devices list
 
-		read -e -p "请输入 Request_Key: " Request_Key
+		read -e -p "請輸入 Request_Key:" Request_Key
 
 		[ -z "$Request_Key" ] && {
 			echo "Request_Key 不能為空"
@@ -15510,7 +15564,7 @@ while true; do
 	  echo -e "${gl_kjlan}51.  ${color51}PVE開小雞面板${gl_kjlan}52.  ${color52}DPanel容器管理面板"
 	  echo -e "${gl_kjlan}53.  ${color53}llama3聊天AI大模型${gl_kjlan}54.  ${color54}AMH主機建站管理面板"
 	  echo -e "${gl_kjlan}55.  ${color55}FRP內網穿透(服務端)${gl_huang}★${gl_bai}	         ${gl_kjlan}56.  ${color56}FRP內網穿透(客戶端)${gl_huang}★${gl_bai}"
-	  echo -e "${gl_kjlan}57.  ${color57}Deepseek聊天AI大模型                ${gl_kjlan}58.  ${color58}Dify大模型知識庫${gl_huang}★${gl_bai}"
+	  echo -e "${gl_kjlan}57.  ${color57}Deepseek聊天AI大模型${gl_kjlan}58.  ${color58}Dify大模型知識庫${gl_huang}★${gl_bai}"
 	  echo -e "${gl_kjlan}59.  ${color59}NewAPI大模型資產管理${gl_kjlan}60.  ${color60}JumpServer開源堡壘機"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}61.  ${color61}線上翻譯伺服器${gl_kjlan}62.  ${color62}RAGFlow大模型知識庫"
@@ -15537,14 +15591,16 @@ while true; do
 	  echo -e "${gl_kjlan}97.  ${color97}WireGuard組網(服務端)${gl_kjlan}98.  ${color98}WireGuard組網(客戶端)"
 	  echo -e "${gl_kjlan}99.  ${color99}DSM群暉虛擬機${gl_kjlan}100. ${color100}Syncthing點對點檔案同步工具"
 	  echo -e "${gl_kjlan}-------------------------"
-	  echo -e "${gl_kjlan}101. ${color101}AI影片生成工具${gl_kjlan}102. ${color102}VoceChat多人線上聊天系統"
+	  echo -e "${gl_kjlan}101. ${color101}AI影片產生工具${gl_kjlan}102. ${color102}VoceChat多人線上聊天系統"
 	  echo -e "${gl_kjlan}103. ${color103}Umami網站統計工具${gl_kjlan}104. ${color104}Stream四層代理轉送工具"
 	  echo -e "${gl_kjlan}105. ${color105}思源筆記${gl_kjlan}106. ${color106}Drawnix開源白板工具"
 	  echo -e "${gl_kjlan}107. ${color107}PanSou網盤搜尋${gl_kjlan}108. ${color108}LangBot聊天機器人"
 	  echo -e "${gl_kjlan}109. ${color109}ZFile線上網路磁碟${gl_kjlan}110. ${color110}Karakeep書籤管理"
 	  echo -e "${gl_kjlan}-------------------------"
-	  echo -e "${gl_kjlan}111. ${color111}多格式文件转换工具                  ${gl_kjlan}112. ${color112}Lucky大內網穿透工具"
+	  echo -e "${gl_kjlan}111. ${color111}多格式檔案轉換工具${gl_kjlan}112. ${color112}Lucky大內網穿透工具"
 	  echo -e "${gl_kjlan}113. ${color113}Firefox瀏覽器${gl_kjlan}114. ${color114}OpenClaw機器人管理工具${gl_huang}★${gl_bai}"
+	  echo -e "${gl_kjlan}115. ${color115}V2RayA代理程式管理面板${gl_kjlan}116. ${color116}Shadowsocks Rust代理服務端"
+	  echo -e "${gl_kjlan}117. ${color117}SQL Server資料庫服務${gl_kjlan}118. ${color118}re:Director重新導向服務"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}第三方應用程式列表"
   	  echo -e "${gl_kjlan}想要讓你的應用程式出現在這裡？查看開發者指南:${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
@@ -16929,7 +16985,7 @@ while true; do
 
 		}
 
-		local docker_describe="Docker Registry 是一个用于存储和分发 Docker 镜像的服务。"
+		local docker_describe="Docker Registry 是一個用於儲存和分發 Docker 映像的服務。"
 		local docker_url="官網介紹: https://hub.docker.com/_/registry"
 		local docker_use=""
 		local docker_passwd=""
@@ -18719,7 +18775,7 @@ while true; do
 		local app_id="99"
 
 		local app_name="dsm群暉虛擬機"
-		local app_text="Docker容器中的虚拟DSM"
+		local app_text="Docker容器中的虛擬DSM"
 		local app_url="官網:${gh_https_url}github.com/vdsm/virtual-dsm"
 		local docker_name="dsm"
 		local docker_port="8099"
@@ -18802,7 +18858,7 @@ while true; do
 
 	  101|moneyprinterturbo)
 		local app_id="101"
-		local app_name="AI影片生成工具"
+		local app_name="AI影片產生工具"
 		local app_text="MoneyPrinterTurbo是一款使用AI大模型合成高清短影片的工具"
 		local app_url="官方網站:${gh_https_url}github.com/harry0703/MoneyPrinterTurbo"
 		local docker_name="moneyprinterturbo"
@@ -19084,7 +19140,7 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 	  110|karakeep)
 		local app_id="110"
 		local app_name="karakeep書籤管理"
-		local app_text="是一款可自行托管的书签应用，带有人工智能功能，专为数据囤积者而设计。"
+		local app_text="是一款可自行託管的書籤應用，具有人工智慧功能，專為資料囤積者而設計。"
 		local app_url="官方網站:${gh_https_url}github.com/karakeep-app/karakeep"
 		local docker_name="docker-web-1"
 		local docker_port="8110"
@@ -19149,11 +19205,12 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 
 	  112|lucky)
 
-		local app_id="112"
-		local docker_name="lucky"
-		local docker_img="gdy666/lucky:v2"
-		# 由於 Lucky 使用 host 網路模式，這裡的連接埠僅作記錄/說明參考，實際上由應用自身控制（預設16601）
-		local docker_port=8112
+			local app_id="112"
+			local docker_name="lucky"
+			local docker_img="gdy666/lucky:v2"
+			local docker_network_mode="host"
+			# 由於 Lucky 使用 host 網路模式，這裡的連接埠僅作記錄/說明參考，實際上由應用自身控制（預設16601）
+			local docker_port=8112
 
 		docker_rum() {
 
@@ -19210,6 +19267,235 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 
 	  114|Moltbot|ClawdBot|moltbot|clawdbot|openclaw|OpenClaw)
 	  	  moltbot_menu
+		  ;;
+
+	  115|v2raya|V2RayA|v2rayA)
+
+			local app_id="115"
+			local app_name="V2RayA代理程式管理面板"
+			local app_text="一個自架代理管理面板，適合用網頁管理 v2ray/xray 節點和系統代理程式。"
+			local app_url="項目地址:${gh_https_url}github.com/v2rayA/v2rayA"
+			local docker_name="v2raya"
+			local docker_port="8115"
+			local docker_network_mode="host"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p /home/docker/v2raya/config
+				cd /home/docker/v2raya
+
+				curl -o /home/docker/v2raya/docker-compose.yml ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/v2raya-docker-compose.yml
+				sed -i "s/V2RAYA_PORT_PLACEHOLDER/${docker_port}/g" /home/docker/v2raya/docker-compose.yml
+
+				docker compose up -d
+
+				clear
+				echo "安裝完成"
+				check_docker_app_ip
+				echo "首次開啟後，按頁面提示完成初始化即可。"
+			}
+
+			docker_app_update() {
+				cd /home/docker/v2raya/ && docker compose pull && docker compose up -d
+				clear
+				echo "更新完成"
+				check_docker_app_ip
+			}
+
+		docker_app_uninstall() {
+			cd /home/docker/v2raya/ && docker compose down --rmi all
+			rm -rf /home/docker/v2raya
+			echo "應用程式已解除安裝"
+		}
+
+		docker_app_plus
+		  ;;
+
+	  116|shadowsocks-rust|ssserver-rust|shadowsocks)
+
+			local app_id="116"
+			local app_name="Shadowsocks Rust代理服務端"
+			local app_text="輕量代理服務，適合給手機用戶端或電腦用戶端直連使用。它不是網頁面板，客戶端填伺服器IP、連接埠、密碼、加密方式即可。"
+			local app_url="項目地址:${gh_https_url}github.com/shadowsocks/shadowsocks-rust"
+			local docker_name="ssserver-rust"
+			local app_workdir="/home/docker/shadowsocks-rust"
+			local docker_port="8388"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				read -e -p "设置 Shadowsocks 密码，回车自动生成随机密码: " ss_password
+				local ss_password=${ss_password:-$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)}
+
+				read -e -p "設定加密方式，回車預設 chacha20-ietf-poly1305:" ss_method
+				local ss_method=${ss_method:-chacha20-ietf-poly1305}
+				local ss_password_safe=$(printf '%s' "$ss_password" | sed 's/\\/\\\\/g; s/"/\\"/g')
+				local ss_method_safe=$(printf '%s' "$ss_method" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+				cat > "${app_workdir}/config.json" <<EOF
+{
+  "server": "0.0.0.0",
+  "server_port": ${docker_port},
+  "password": "${ss_password_safe}",
+  "method": "${ss_method_safe}",
+  "mode": "tcp_and_udp"
+}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+服务器端口: ${docker_port}
+密码: ${ss_password}
+加密方式: ${ss_method}
+传输协议: TCP + UDP
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/shadowsocks-rust-docker-compose.yml
+				sed -i "s/SSSERVER_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "安裝完成"
+				echo "客戶端這樣填："
+				echo "位址：你的伺服器IP或域名"
+				echo "連接埠：${docker_port}"
+				echo "密碼：${ss_password}"
+				echo "加密：${ss_method}"
+				echo "說明：這是代理服務，不是網頁應用，不能走網頁反代。"
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/shadowsocks-rust-docker-compose.yml
+				sed -i "s/SSSERVER_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "更新完成"
+				echo "當前客戶端參數保存在:${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "應用程式已解除安裝"
+			}
+
+		docker_app_plus
+		  ;;
+
+	  117|sqlserver|mssql|SQLServer|SQLSERVER)
+
+			local app_id="117"
+			local app_name="SQL Server資料庫服務"
+			local app_text="微軟 SQL Server 資料庫。它不是網頁面板，適合給程式、Navicat、DBeaver 這類客戶端連線使用。"
+			local app_url="項目地址:${gh_https_url}github.com/microsoft/mssql-docker"
+			local docker_name="sqlserver"
+			local app_workdir="/home/docker/sqlserver"
+			local docker_port="1433"
+			local app_size="5"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}/backup"
+				cd "${app_workdir}"
+
+				read -e -p "設定 SA 密碼，回車預設使用 YourStrong!Passw0rd:" sa_password
+				local sa_password=${sa_password:-YourStrong!Passw0rd}
+
+				cat > "${app_workdir}/.env" <<EOF
+SQLSERVER_PORT=${docker_port}
+MSSQL_SA_PASSWORD=${sa_password}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+端口: ${docker_port}
+用户名: sa
+密码: ${sa_password}
+数据库类型: Microsoft SQL Server
+备份目录: ${app_workdir}/backup
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+
+				docker compose up -d
+
+				clear
+				echo "安裝完成"
+				echo "連接資料庫這樣填："
+				echo "位址：你的伺服器IP或域名"
+				echo "連接埠：${docker_port}"
+				echo "使用者名稱：sa"
+				echo "密碼：${sa_password}"
+				echo "說明：這是資料庫服務，不是網頁應用程式。"
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "更新完成"
+				echo "連線資訊保存在:${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "應用程式已解除安裝"
+			}
+
+		docker_app_plus
+		  ;;
+
+	  118|re-director|redirector|redirect)
+
+			local app_id="118"
+			local app_name="re:Director重新導向服務"
+			local app_text="一個自架的重定向管理服務，適合統一管理短連結、域名跳轉和 301/302/307/308 重定向。"
+			local app_url="項目地址:${gh_https_url}github.com/re-Director/re-director"
+			local docker_name="re-director"
+			local app_workdir="/home/docker/re-director"
+			local docker_port="8118"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "安裝完成"
+				check_docker_app_ip
+				echo "提示：把需要跳轉的網域解析到本機，再到面板建立對應的重定向規則即可。"
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "更新完成"
+				check_docker_app_ip
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "應用程式已解除安裝"
+			}
+
+		docker_app_plus
 		  ;;
 
 
@@ -19650,7 +19936,7 @@ net_menu() {
 				send_stats "啟用網卡"
 				read -erp "請輸入要啟用的網路卡名稱:" nic
 				if ip link show "$nic" &>/dev/null; then
-					ip link set "$nic" up && echo "✔ 网卡 $nic已啟用"
+					ip link set "$nic" up && echo "✔ 網路卡$nic已啟用"
 				else
 					echo "✘ 網路卡不存在"
 				fi
@@ -19773,7 +20059,7 @@ log_menu() {
 				echo "⚠️ 清理 journal 日誌（安全方式）"
 				echo "1) 保留最近 7 天"
 				echo "2) 保留最近 3 天"
-				echo "3) 限制日志最大 500M"
+				echo "3) 限制日誌最大 500M"
 				read -erp "請選擇清理方式:" c
 				case $c in
 					1) journalctl --vacuum-time=7d ;;
@@ -20071,7 +20357,7 @@ linux_Settings() {
 			echo "---------------------------------------"
 			echo "此功能可無縫安裝python官方支援的任何版本！"
 			local VERSION=$(python3 -V 2>&1 | awk '{print $2}')
-			echo -e "当前python版本号: ${gl_huang}$VERSION${gl_bai}"
+			echo -e "目前python版本號:${gl_huang}$VERSION${gl_bai}"
 			echo "------------"
 			echo "推薦版本: 3.12 3.11 3.10 3.9 3.8 2.7"
 			echo "查詢更多版本: https://www.python.org/downloads/"
@@ -20181,7 +20467,7 @@ EOF
 						send_stats "SSH連接埠已修改"
 						new_ssh_port $new_port
 					elif [[ $new_port -eq 0 ]]; then
-						send_stats "退出SSH埠修改"
+						send_stats "退出SSH連接埠修改"
 						break
 					else
 						echo "連接埠號碼無效，請輸入1到65535之間的數字。"
@@ -20695,7 +20981,7 @@ EOF
 				  echo ""
 				  echo "操作"
 				  echo "------------------------"
-				  echo "1. 添加新的解析              2. 删除解析地址"
+				  echo "1. 新增新的解析 2. 刪除解析位址"
 				  echo "------------------------"
 				  echo "0. 返回上一級選單"
 				  echo "------------------------"
@@ -20808,7 +21094,7 @@ EOF
 			  echo "TG-bot監控預警功能"
 			  echo "影片介紹: https://youtu.be/vLL-eb3Z_TY"
 			  echo "------------------------------------------------"
-			  echo "您需要設定tg機器人API和接收預警的使用者ID，即可實現本機CPU，內存，硬碟，流量，SSH登入的即時監控預警"
+			  echo "您需要設定tg機器人API和接收預警的用戶ID，即可實現本機CPU，內存，硬碟，流量，SSH登入的即時監控預警"
 			  echo "到達閾值後會向用戶發送預警訊息"
 			  echo -e "${gl_hui}-關於流量，重啟伺服器將重新計算-${gl_bai}"
 			  read -e -p "確定繼續嗎？ (Y/N):" choice
@@ -20967,7 +21253,7 @@ EOF
 			  echo -e "7. 開啟${gl_huang}BBR${gl_bai}加速"
 			  echo -e "8. 設定時區到${gl_huang}上海${gl_bai}"
 			  echo -e "9. 自動優化DNS位址${gl_huang}海外: 1.1.1.1 8.8.8.8 國內: 223.5.5.5${gl_bai}"
-		  	  echo -e "10. 設定網路為${gl_huang}ipv4优先${gl_bai}"
+		  	  echo -e "10. 設定網路為${gl_huang}ipv4優先${gl_bai}"
 			  echo -e "11. 安裝基礎工具${gl_huang}docker wget sudo tar unzip socat btop nano vim${gl_bai}"
 			  echo -e "12. Linux系統核心參數優化${gl_huang}自動根據網路環境調優${gl_bai}"
 			  echo "------------------------------------------------"
@@ -21159,7 +21445,7 @@ linux_file() {
 		echo "1. 進入目錄 2. 建立目錄 3. 修改目錄權限 4. 重新命名目錄"
 		echo "5. 刪除目錄 6. 返回上一層選單目錄"
 		echo "------------------------"
-		echo "11. 建立檔案 12. 編輯檔案 13. 修改檔案權限 14. 重新命名文件"
+		echo "11. 建立文件 12. 編輯文件 13. 修改文件權限 14. 重新命名文件"
 		echo "15. 刪除文件"
 		echo "------------------------"
 		echo "21. 壓縮檔案目錄 22. 解壓縮檔案目錄 23. 行動檔案目錄 24. 複製檔案目錄"
@@ -21236,7 +21522,7 @@ linux_file() {
 				send_stats "壓縮檔案/目錄"
 				;;
 			22) # 解压文件/目录
-				read -e -p "請輸入要解壓縮的檔案名稱 (.tar.gz):" filename
+				read -e -p "請輸入要解壓縮的檔名 (.tar.gz):" filename
 				install tar
 				tar -xzvf "$filename" && echo "已解壓縮$filename" || echo "解壓縮失敗"
 				send_stats "解壓縮檔案/目錄"
@@ -21246,7 +21532,7 @@ linux_file() {
 				read -e -p "請輸入要移動的檔案或目錄路徑:" src_path
 				if [ ! -e "$src_path" ]; then
 					echo "錯誤: 檔案或目錄不存在。"
-					send_stats "移动文件或目录失败: 文件或目录不存在"
+					send_stats "移動檔案或目錄失敗: 檔案或目錄不存在"
 					continue
 				fi
 
@@ -21408,7 +21694,7 @@ while true; do
 		  1)
 			  send_stats "新增叢集伺服器"
 			  read -e -p "伺服器名稱:" server_name
-			  read -e -p "服务器IP: " server_ip
+			  read -e -p "伺服器IP:" server_ip
 			  read -e -p "伺服器連接埠（22）:" server_port
 			  local server_port=${server_port:-22}
 			  read -e -p "伺服器使用者名稱（root）:" server_username
@@ -21522,7 +21808,7 @@ echo ""
 echo -e "網域優惠"
 echo "------------------------"
 echo -e "${gl_lan}GNAME 8.8刀首年COM域名 6.68刀首年CC域名${gl_bai}"
-echo -e "${gl_bai}网址: https://www.gname.com/register?tt=86836&ttcode=KEJILION86836&ttbj=sh${gl_bai}"
+echo -e "${gl_bai}網址: https://www.gname.com/register?tt=86836&ttcode=KEJILION86836&ttbj=sh${gl_bai}"
 echo "------------------------"
 echo ""
 echo -e "科技lion週邊"
@@ -21652,7 +21938,7 @@ while true; do
 			# 備份當前腳本
 			cp -f ~/kejilion.sh ~/kejilion.sh.bak 2>/dev/null
 
-			# 下载到临时文件，校验后再替换
+			# 下載到臨時文件，校驗後再替換
 			local tmp_file=$(mktemp ~/kejilion_tmp.XXXXXX)
 			if curl -sS --max-time 60 --fail -o "$tmp_file" "$download_url" && \
 			   [ -s "$tmp_file" ] && \
@@ -21664,7 +21950,7 @@ while true; do
 				yinsiyuanquan2
 				cp -f ~/kejilion.sh /usr/local/bin/k > /dev/null 2>&1
 				ln -sf /usr/local/bin/k /usr/bin/k > /dev/null 2>&1
-				echo -e "${gl_lv}脚本已更新到最新版本！${gl_huang}v$sh_v_new${gl_bai}"
+				echo -e "${gl_lv}腳本已更新至最新版本！${gl_huang}v$sh_v_new${gl_bai}"
 				send_stats "腳本已經最新$sh_v_new"
 			else
 				rm -f "$tmp_file"
@@ -21672,7 +21958,7 @@ while true; do
 				if [ -f ~/kejilion.sh.bak ]; then
 					mv -f ~/kejilion.sh.bak ~/kejilion.sh
 				fi
-				echo -e "${gl_hong}更新失敗！下载出错或文件校验不通过，已恢复原版本${gl_bai}"
+				echo -e "${gl_hong}更新失敗！下載出錯或檔案校驗不通過，已恢復原始版本${gl_bai}"
 				send_stats "腳本更新失敗"
 			fi
 			break_end
@@ -21832,7 +22118,7 @@ echo "LDNMP站台管理 k web"
 echo "LDNMP快取清理 k web cache"
 echo "安裝WordPress k wp |k wordpress |k wp xxx.com"
 echo "安裝反向代理 k fd |k rp |k 反代 |k fd xxx.com"
-echo "安装负载均衡        k loadbalance |k 负载均衡"
+echo "安裝負載平衡 k loadbalance |k 負載平衡"
 echo "安裝L4負載平衡 k stream |k L4負載平衡"
 echo "防火牆面板 k fhq |k 防火牆"
 echo "開放埠 k dkdk 8080 |k 開啟連接埠 8080"
@@ -21842,7 +22128,7 @@ echo "阻止IP k zzip 177.5.25.36 |k 阻止IP 177.5.25.36"
 echo "命令收藏 k fav | k 指令收藏夾"
 echo "應用市場管理 k app"
 echo "應用編號快捷管理 k app 26 | k app 1panel | k app npm"
-echo "fail2ban管理        k fail2ban | k f2b"
+echo "fail2ban管理 k fail2ban | k f2b"
 echo "顯示系統資訊 k info"
 echo "ROOT金鑰管理 k sshkey"
 echo "SSH公鑰導入(URL) k sshkey <url>"

@@ -65,7 +65,7 @@ CheckFirstRun_true() {
 
 # 이 기능은 함수에 묻혀있는 정보를 수집하고 사용자가 사용하는 현재 스크립트 버전 번호, 사용 시간, 시스템 버전, CPU 아키텍처, 시스템 국가 및 기능 이름을 기록합니다. 민감한 정보는 포함되어 있지 않으니 걱정하지 마세요! 저를 믿어주세요!
 # 이 기능은 왜 설계되었나요? 그 목적은 사용자가 사용하고 싶어하는 기능을 더 잘 이해하고, 기능을 더욱 최적화하고 사용자 요구에 맞는 더 많은 기능을 출시하는 것입니다.
-# send_stats 함수 호출 위치에 대한 전문을 검색할 수 있습니다. 투명하고 오픈 소스입니다. 불편하신 점이 있으시면 이용을 거부하실 수 있습니다.
+# send_stats 함수 호출 위치에 대한 전문을 검색할 수 있습니다. 투명하고 오픈 소스입니다. 우려되는 사항이 있는 경우 이용을 거부하실 수 있습니다.
 
 
 
@@ -1085,7 +1085,7 @@ iptables_panel() {
 		  echo "3. 모든 포트를 엽니다. 4. 모든 포트를 닫습니다."
 		  echo "------------------------"
 		  echo "5. IP 화이트리스트 6. IP 블랙리스트"
-		  echo "7. 지정된 IP를 삭제합니다."
+		  echo "7. 지정된 IP 지우기"
 		  echo "------------------------"
 		  echo "11. PING 허용 12. PING 비활성화"
 		  echo "------------------------"
@@ -1192,7 +1192,7 @@ iptables_panel() {
 				  ;;
 
 			  17)
-				  read -e -p "삭제된 국가 코드를 입력하십시오(여러 국가 코드는 CN US JP와 같이 공백으로 구분될 수 있음)." country_code
+				  read -e -p "지워진 국가 코드를 입력하십시오(여러 국가 코드는 CN US JP와 같이 공백으로 구분될 수 있음)." country_code
 				  manage_country_rules unblock $country_code
 				  send_stats "명확한 국가$country_codeIP"
 				  ;;
@@ -1254,7 +1254,7 @@ check_swap() {
 
 local swap_total=$(free -m | awk 'NR==3{print $2}')
 
-# 가상 메모리를 만들어야 하는지 확인
+# 가상 메모리를 생성해야 하는지 결정
 [ "$swap_total" -gt 0 ] || add_swap 1024
 
 
@@ -1824,7 +1824,7 @@ nginx_waf() {
 		return 1
 	fi
 
-	# nginx 이미지를 확인하고 그에 따라 처리하세요.
+	# nginx 이미지를 확인하고 그에 따라 처리하십시오.
 	if grep -q "kjlion/nginx:alpine" /home/web/docker-compose.yml; then
 		docker exec nginx nginx -s reload
 	else
@@ -1997,7 +1997,7 @@ nginx_br() {
 		return 1
 	fi
 
-	# nginx 이미지를 확인하고 그에 따라 처리하세요.
+	# nginx 이미지를 확인하고 그에 따라 처리하십시오.
 	if grep -q "kjlion/nginx:alpine" /home/web/docker-compose.yml; then
 		docker exec nginx nginx -s reload
 	else
@@ -2054,7 +2054,7 @@ nginx_zstd() {
 		return 1
 	fi
 
-	# nginx 이미지를 확인하고 그에 따라 처리하세요.
+	# nginx 이미지를 확인하고 그에 따라 처리하십시오.
 	if grep -q "kjlion/nginx:alpine" /home/web/docker-compose.yml; then
 		docker exec nginx nginx -s reload
 	else
@@ -2310,7 +2310,7 @@ check_nginx_compression() {
 
 	# zstd가 켜져 있고 주석 처리가 해제되어 있는지 확인하세요. (전체 줄은 zstd on으로 시작됩니다.)
 	if grep -qE '^\s*zstd\s+on;' "$CONFIG_FILE"; then
-		zstd_status="zstd 압축이 활성화되었습니다"
+		zstd_status="zstd 압축이 켜져 있습니다"
 	else
 		zstd_status=""
 	fi
@@ -2504,11 +2504,23 @@ ip_address
 
 
 if [ -n "$ipv4_address" ]; then
-	echo "http://$ipv4_address:${docker_port}"
+	if [ "${docker_access_mode:-http}" = "raw" ]; then
+		echo "$ipv4_address:${docker_port}"
+	else
+		echo "http://$ipv4_address:${docker_port}"
+	fi
 fi
 
 if [ -n "$ipv6_address" ]; then
-	echo "http://[$ipv6_address]:${docker_port}"
+	if [ "${docker_access_mode:-http}" = "raw" ]; then
+		echo "[$ipv6_address]:${docker_port}"
+	else
+		echo "http://[$ipv6_address]:${docker_port}"
+	fi
+fi
+
+if [ "${docker_access_mode:-http}" = "raw" ]; then
+	return
 fi
 
 local search_pattern1="$ipv4_address:${docker_port}"
@@ -2775,7 +2787,7 @@ clear_host_port_rules() {
 	install iptables
 
 
-	# 다른 모든 IP의 접근을 차단하는 규칙을 해제하세요.
+	# 다른 모든 IP의 접근을 차단하는 규칙을 삭제하세요.
 	if iptables -C INPUT -p tcp --dport "$port" -j DROP &>/dev/null; then
 		iptables -D INPUT -p tcp --dport "$port" -j DROP
 	fi
@@ -2791,7 +2803,7 @@ clear_host_port_rules() {
 	fi
 
 
-	# 다른 모든 IP의 접근을 차단하는 규칙을 해제하세요.
+	# 다른 모든 IP의 접근을 차단하는 규칙을 삭제하세요.
 	if iptables -C INPUT -p udp --dport "$port" -j DROP &>/dev/null; then
 		iptables -D INPUT -p udp --dport "$port" -j DROP
 	fi
@@ -2932,28 +2944,40 @@ while true; do
 			send_stats "제거$docker_name"
 			;;
 
-		5)
-			echo "${docker_name}도메인 이름 액세스 설정"
-			send_stats "${docker_name}도메인 이름 액세스 설정"
-			add_yuming
-			ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
-			block_container_port "$docker_name" "$ipv4_address"
-			;;
+			5)
+				echo "${docker_name}도메인 이름 액세스 설정"
+				send_stats "${docker_name}도메인 이름 액세스 설정"
+				add_yuming
+				ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					block_host_port "$docker_port" "$ipv4_address"
+				else
+					block_container_port "$docker_name" "$ipv4_address"
+				fi
+				;;
 
 		6)
 			echo "https://가 없는 도메인 이름 형식 example.com"
 			web_del
 			;;
 
-		7)
-			send_stats "IP 액세스 허용${docker_name}"
-			clear_container_rules "$docker_name" "$ipv4_address"
-			;;
+			7)
+				send_stats "IP 액세스 허용${docker_name}"
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					clear_host_port_rules "$docker_port" "$ipv4_address"
+				else
+					clear_container_rules "$docker_name" "$ipv4_address"
+				fi
+				;;
 
-		8)
-			send_stats "IP 접근 차단${docker_name}"
-			block_container_port "$docker_name" "$ipv4_address"
-			;;
+			8)
+				send_stats "IP 접근 차단${docker_name}"
+				if [ "${docker_network_mode:-bridge}" = "host" ]; then
+					block_host_port "$docker_port" "$ipv4_address"
+				else
+					block_container_port "$docker_name" "$ipv4_address"
+				fi
+				;;
 
 		*)
 			break
@@ -3037,26 +3061,38 @@ docker_app_plus() {
 				send_stats "$app_name제거"
 				;;
 
-			5)
-				echo "${docker_name}도메인 이름 액세스 설정"
-				send_stats "${docker_name}도메인 이름 액세스 설정"
-				add_yuming
-				ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
-				block_container_port "$docker_name" "$ipv4_address"
+				5)
+					echo "${docker_name}도메인 이름 액세스 설정"
+					send_stats "${docker_name}도메인 이름 액세스 설정"
+					add_yuming
+					ldnmp_Proxy ${yuming} 127.0.0.1 ${docker_port}
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						block_host_port "$docker_port" "$ipv4_address"
+					else
+						block_container_port "$docker_name" "$ipv4_address"
+					fi
 
-				;;
+					;;
 			6)
 				echo "https://가 없는 도메인 이름 형식 example.com"
 				web_del
 				;;
-			7)
-				send_stats "IP 액세스 허용${docker_name}"
-				clear_container_rules "$docker_name" "$ipv4_address"
-				;;
-			8)
-				send_stats "IP 접근 차단${docker_name}"
-				block_container_port "$docker_name" "$ipv4_address"
-				;;
+				7)
+					send_stats "IP 액세스 허용${docker_name}"
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						clear_host_port_rules "$docker_port" "$ipv4_address"
+					else
+						clear_container_rules "$docker_name" "$ipv4_address"
+					fi
+					;;
+				8)
+					send_stats "IP 접근 차단${docker_name}"
+					if [ "${docker_network_mode:-bridge}" = "host" ]; then
+						block_host_port "$docker_port" "$ipv4_address"
+					else
+						block_container_port "$docker_name" "$ipv4_address"
+					fi
+					;;
 			*)
 				break
 				;;
@@ -3529,7 +3565,13 @@ ldnmp_Proxy() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}실수:${gl_bai}Nginx 컨테이너를 다시 로드하지 못했습니다."
+		echo "Docker 애플리케이션을 되돌릴 때 이 문제가 발생하면 다음을 실행하십시오."
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3576,7 +3618,13 @@ ldnmp_Proxy_backend() {
 	update_nginx_listen_port "$yuming" "$access_port"
 
 	nginx_http_on
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}실수:${gl_bai}Nginx 컨테이너를 다시 로드하지 못했습니다."
+		echo "Docker 애플리케이션을 되돌릴 때 이 문제가 발생하면 다음을 실행하십시오."
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	nginx_web_on
 }
 
@@ -3757,7 +3805,13 @@ ldnmp_Proxy_backend_stream() {
 
 	sed -i "s/# 동적으로 추가/$upstream_servers/g" /home/web/stream.d/$proxy_name.conf
 
-	docker exec nginx nginx -s reload
+	if ! docker exec nginx nginx -s reload; then
+		echo -e "${gl_hong}실수:${gl_bai}Nginx 컨테이너를 다시 로드하지 못했습니다."
+		echo "Docker 애플리케이션을 되돌릴 때 이 문제가 발생하면 다음을 실행하십시오."
+		echo "sudo systemctl restart docker"
+		echo "docker network ls"
+		return 1
+	fi
 	clear
 	echo "당신의$webname지어졌습니다!"
 	echo "------------------------"
@@ -5830,7 +5884,7 @@ clamav_freshclam() {
 
 clamav_scan() {
 	if [ $# -eq 0 ]; then
-		echo "스캔할 디렉터리를 지정하세요."
+		echo "스캔할 디렉터리를 지정하십시오."
 		return
 	fi
 
@@ -5943,7 +5997,7 @@ _kernel_optimize_core() {
 
 	echo -e "${gl_lv}로 전환하다${mode_name}...${gl_bai}"
 
-	# ──장면에 따라 매개변수를 설정합니다──
+	# ──장면에 따라 매개변수를 설정하세요──
 	local SWAPPINESS DIRTY_RATIO DIRTY_BG_RATIO OVERCOMMIT MIN_FREE_KB VFS_PRESSURE
 	local RMEM_MAX WMEM_MAX TCP_RMEM TCP_WMEM
 	local SOMAXCONN BACKLOG SYN_BACKLOG
@@ -7199,7 +7253,7 @@ disk_manager() {
 	send_stats "하드디스크 관리 기능"
 	while true; do
 		clear
-		echo "하드 드라이브 파티션 관리"
+		echo "하드 디스크 파티션 관리"
 		echo -e "${gl_huang}이 기능은 내부 테스트 중이므로 프로덕션 환경에서는 사용하면 안 됩니다.${gl_bai}"
 		echo "------------------------"
 		list_partitions
@@ -7989,7 +8043,7 @@ docker_ssh_migration() {
 
 		echo -e "${gl_kjlan}Docker 컨테이너 백업 중...${gl_bai}"
 		docker ps --format '{{.Names}}'
-		read -e -p  "백업할 컨테이너의 이름을 입력하십시오(여러 개의 공백을 구분하고 Enter를 눌러 실행 중인 모든 컨테이너를 백업하십시오)." containers
+		read -e -p  "백업할 컨테이너의 이름을 입력하십시오(실행 중인 모든 컨테이너를 백업하려면 여러 개의 공백을 구분하고 Enter 키를 누르십시오)." containers
 
 		install tar jq gzip
 		install_docker
@@ -8144,7 +8198,7 @@ docker_ssh_migration() {
 			[[ ! -f "$json" ]] && continue
 			has_container=true
 			container=$(basename "$json" | sed 's/_inspect.json//')
-			echo -e "${gl_lv}처리용기:$container${gl_bai}"
+			echo -e "${gl_lv}처리 용기:$container${gl_bai}"
 
 			# 컨테이너가 이미 존재하고 실행 중인지 확인하세요.
 			if docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
@@ -8263,7 +8317,7 @@ docker_ssh_migration() {
 			echo -e "1. 도커 프로젝트 백업"
 			echo -e "2. 도커 프로젝트 마이그레이션"
 			echo -e "3. 도커 프로젝트 복원"
-			echo -e "4. Docker 프로젝트의 백업 파일을 삭제합니다."
+			echo -e "4. docker 프로젝트 백업 파일 삭제"
 			echo "------------------------"
 			echo -e "0. 이전 메뉴로 돌아가기"
 			echo "------------------------"
@@ -10380,7 +10434,7 @@ for name, provider in list(providers.items()):
         provider['models'] = new_models
         changed = True
 
-    summary.append(f'✅ {name}: {len(add_ids)} 추가, 삭제됨 {len(removed_ids)}, 현재 {len(new_models)}')
+    summary.append(f'✅ {name}: {len(add_ids)} 추가됨, 삭제됨 {len(removed_ids)}, 현재 {len(new_models)}')
 
     if added_ids:
         summary.append(f'➕ 새 모델 추가({len(add_ids)}):')
@@ -11356,7 +11410,7 @@ PY
 	}
 
 	openclaw_api_providers_showcase() {
-		send_stats "OpenClaw API 공급업체 권장 사항"
+		send_stats "OpenClaw API 공급업체 권장사항"
 
 		clear
 		echo ""
@@ -11719,7 +11773,7 @@ PYTHON_EOF
 				return 1
 			fi
 
-			# 빠른 위치를 쉽게 찾을 수 있도록 각 모델에 번호를 매깁니다(예: "(10) or-api/...:free")
+			# 빠른 찾기를 위해 각 모델에 번호를 매깁니다(예: "(10) or-api/...:free")
 			models_list=$(echo "$models_raw" | awk '{print "(" NR ") " $0}')
 			model_count=$(echo "$models_list" | sed '/^\s*$/d' | wc -l | tr -d ' ')
 
@@ -11978,7 +12032,7 @@ PYTHON_EOF
 				fi
 			fi
 
-			echo "⚠️ 플러그인이 설치되었지만,plugins.allow의 동기화에 실패했습니다. 수동으로 확인하세요.$config_file"
+			echo "⚠️ 플러그인이 설치되었지만,plugins.allow의 동기화에 실패했습니다. 수동으로 확인하십시오:$config_file"
 			return 1
 		}
 
@@ -12085,7 +12139,7 @@ PYTHON_EOF
 
 			echo "1) 플러그인 설치/활성화"
 			echo "2) 플러그인 삭제/비활성화"
-			echo "0) 반품"
+			echo "0) 반환"
 			read -e -p "작업을 선택하십시오:" plugin_action
 
 			[ "$plugin_action" = "0" ] && break
@@ -12213,7 +12267,7 @@ PYTHON_EOF
 
 			echo "1) 설치 기술"
 			echo "2) 스킬 삭제"
-			echo "0) 반품"
+			echo "0) 반환"
 			read -e -p "작업을 선택하십시오:" skill_action
 
 			[ "$skill_action" = "0" ] && break
@@ -13701,7 +13755,7 @@ PY
 			openclaw_memory_config_set "memory.qmd.command" "$OPENCLAW_MEMORY_QMD_PATH"
 			echo "✅ memory.qmd.command에 작성:$OPENCLAW_MEMORY_QMD_PATH"
 		else
-			echo "✅ memory.qmd.command가 정확합니다"
+			echo "✅ memory.qmd.command가 정확합니다."
 		fi
 		if [ "$OPENCLAW_MEMORY_PREHEAT" = "true" ]; then
 			echo "🔥 따뜻한 지수(모델 다운로드 가능)"
@@ -13947,7 +14001,7 @@ EOF
 			fi
 		else
 			echo "includeDefaultMemory 구성이 정상입니다."
-			echo "실행 예정: 기존 인덱스 정리 → 모든 에이전트 인덱스 완전 재구축"
+			echo "실행 예정: 기존 인덱스 정리 → 모든 에이전트 인덱스 완전히 재구축"
 			echo ""
 			read -e -p "실행을 확인하시겠습니까? (예/아니요):" confirm_fix
 			if [[ ! "$confirm_fix" =~ ^[Nn]$ ]]; then
@@ -14075,7 +14129,7 @@ EOF
 			fi
 		fi
 		if ! [[ "$start_line" =~ ^[0-9]+$ ]] || ! [[ "$count" =~ ^[0-9]+$ ]]; then
-			echo "❌ 유효한 숫자를 입력하세요."
+			echo "❌ 유효한 번호를 입력하세요."
 			return 1
 		fi
 		if [ "$start_line" -lt 1 ]; then
@@ -14191,7 +14245,7 @@ EOF
 $fl_agent_lines
 EOF
 						openclaw gateway restart
-						echo "✅ 모든 에이전트에서 강제 재구성이 수행되었으며 게이트웨이가 자동으로 다시 시작되었습니다."
+						echo "✅ 모든 에이전트에 대해 강제 재구성이 수행되었으며 게이트웨이가 자동으로 다시 시작되었습니다."
 					fi
 				else
 					openclaw memory index
@@ -14442,7 +14496,7 @@ print(json.dumps(data, indent=2))
 		if openclaw_has_command openclaw && echo "$json_payload" | openclaw approvals set --stdin >/dev/null 2>&1; then
 			return 0
 		fi
-		# 대체: 파일 직접 쓰기
+		# 대체: 파일을 직접 작성
 		echo "$json_payload" > "$approvals_file"
 	}
 
@@ -15479,7 +15533,7 @@ while true; do
 
 	  echo -e "${gl_kjlan}1.   ${color1}파고다 패널 공식 버전${gl_kjlan}2.   ${color2}aaPanel Pagoda 국제 버전"
 	  echo -e "${gl_kjlan}3.   ${color3}1패널 차세대 관리 패널${gl_kjlan}4.   ${color4}NginxProxyManager 시각화 패널"
-	  echo -e "${gl_kjlan}5.   ${color5}OpenList 다중 저장소 파일 목록 프로그램${gl_kjlan}6.   ${color6}Ubuntu 원격 데스크톱 웹 버전"
+	  echo -e "${gl_kjlan}5.   ${color5}OpenList 다중 저장소 파일 목록 프로그램${gl_kjlan}6.   ${color6}Ubuntu 원격 데스크톱 웹 에디션"
 	  echo -e "${gl_kjlan}7.   ${color7}나타 프로브 VPS 모니터링 패널${gl_kjlan}8.   ${color8}QB 오프라인 BT 자기 다운로드 패널"
 	  echo -e "${gl_kjlan}9.   ${color9}Poste.io 메일 서버 프로그램${gl_kjlan}10.  ${color10}RocketChat 다자간 온라인 채팅 시스템"
 	  echo -e "${gl_kjlan}-------------------------"
@@ -15545,9 +15599,11 @@ while true; do
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}111. ${color111}다중 형식 파일 변환 도구${gl_kjlan}112. ${color112}행운의 대형 인트라넷 침투 도구"
 	  echo -e "${gl_kjlan}113. ${color113}파이어폭스 브라우저${gl_kjlan}114. ${color114}OpenClaw 봇 관리 도구${gl_huang}★${gl_bai}"
+	  echo -e "${gl_kjlan}115. ${color115}V2RayA 에이전트 관리 패널${gl_kjlan}116. ${color116}Shadowsocks Rust 프록시 서버"
+	  echo -e "${gl_kjlan}117. ${color117}SQL Server 데이터베이스 서비스${gl_kjlan}118. ${color118}re:디렉터 리디렉션 서비스"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}타사 애플리케이션 목록"
-  	  echo -e "${gl_kjlan}귀하의 앱이 여기에 표시되기를 원하십니까? 개발자 가이드를 확인하세요:${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
+  	  echo -e "${gl_kjlan}귀하의 앱이 여기에 표시되기를 원하십니까? 개발자 가이드를 확인하세요.${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
 
 	  for f in "$HOME"/apps/*.conf; do
 		  [ -e "$f" ] || continue
@@ -16588,7 +16644,7 @@ while true; do
 
 
 		local docker_describe="포토프리즘은 매우 강력한 개인 사진 앨범 시스템입니다."
-		local docker_url="공식 홈페이지 소개: https://www.photoprism.app/"
+		local docker_url="공식 홈페이지 소개 : https://www.photoprism.app/"
 		local docker_use="echo \"계정: admin 비밀번호:$rootpasswd\""
 		local docker_passwd=""
 		local app_size="1"
@@ -17120,7 +17176,7 @@ while true; do
 
 		}
 
-		local docker_describe="OpenWebUI는 새로운 llama3 대규모 언어 모델에 연결된 대규모 언어 모델 웹 페이지 프레임워크입니다."
+		local docker_describe="OpenWebUI는 새로운 llama3 대규모 언어 모델에 연결되는 대규모 언어 모델 웹 페이지 프레임워크입니다."
 		local docker_url="공식 웹사이트 소개:${gh_https_url}github.com/open-webui/open-webui"
 		local docker_use="docker exec ollama ollama run llama3.2:1b"
 		local docker_passwd=""
@@ -18172,7 +18228,7 @@ while true; do
 
 		}
 
-		local docker_describe="원격으로 영화와 생방송을 함께 시청할 수 있는 프로그램입니다. 동시 시청, 라이브 방송, 채팅 및 기타 기능을 제공합니다."
+		local docker_describe="영화와 생방송을 원격으로 함께 시청할 수 있는 프로그램입니다. 동시 시청, 라이브 방송, 채팅 및 기타 기능을 제공합니다."
 		local docker_url="공식 웹사이트 소개:${gh_https_url}github.com/synctv-org/synctv"
 		local docker_use="echo \"초기 계정 및 비밀번호: root. 로그인 후 시간에 맞춰 로그인 비밀번호를 변경하세요\""
 		local docker_passwd=""
@@ -19149,11 +19205,12 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 
 	  112|lucky)
 
-		local app_id="112"
-		local docker_name="lucky"
-		local docker_img="gdy666/lucky:v2"
-		# Lucky는 호스트 네트워크 모드를 사용하므로 여기서 포트는 기록/설명 참조용으로만 사용되며 실제로는 애플리케이션 자체에 의해 제어됩니다(기본값 16601).
-		local docker_port=8112
+			local app_id="112"
+			local docker_name="lucky"
+			local docker_img="gdy666/lucky:v2"
+			local docker_network_mode="host"
+			# Lucky는 호스트 네트워크 모드를 사용하므로 여기서 포트는 기록/설명 참조용으로만 사용되며 실제로는 애플리케이션 자체에 의해 제어됩니다(기본값 16601).
+			local docker_port=8112
 
 		docker_rum() {
 
@@ -19210,6 +19267,235 @@ discourse,yunsou,ahhhhfs,nsgame,gying" \
 
 	  114|Moltbot|ClawdBot|moltbot|clawdbot|openclaw|OpenClaw)
 	  	  moltbot_menu
+		  ;;
+
+	  115|v2raya|V2RayA|v2rayA)
+
+			local app_id="115"
+			local app_name="V2RayA 에이전트 관리 패널"
+			local app_text="v2ray/xray 노드 및 시스템 에이전트의 웹 관리에 적합한 자체 호스팅 에이전트 관리 패널입니다."
+			local app_url="프로젝트 주소:${gh_https_url}github.com/v2rayA/v2rayA"
+			local docker_name="v2raya"
+			local docker_port="8115"
+			local docker_network_mode="host"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p /home/docker/v2raya/config
+				cd /home/docker/v2raya
+
+				curl -o /home/docker/v2raya/docker-compose.yml ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/v2raya-docker-compose.yml
+				sed -i "s/V2RAYA_PORT_PLACEHOLDER/${docker_port}/g" /home/docker/v2raya/docker-compose.yml
+
+				docker compose up -d
+
+				clear
+				echo "설치 완료"
+				check_docker_app_ip
+				echo "처음으로 연 후 페이지 안내에 따라 초기화를 완료하세요."
+			}
+
+			docker_app_update() {
+				cd /home/docker/v2raya/ && docker compose pull && docker compose up -d
+				clear
+				echo "업데이트 완료"
+				check_docker_app_ip
+			}
+
+		docker_app_uninstall() {
+			cd /home/docker/v2raya/ && docker compose down --rmi all
+			rm -rf /home/docker/v2raya
+			echo "앱이 제거되었습니다."
+		}
+
+		docker_app_plus
+		  ;;
+
+	  116|shadowsocks-rust|ssserver-rust|shadowsocks)
+
+			local app_id="116"
+			local app_name="Shadowsocks Rust 프록시 서버"
+			local app_text="모바일 클라이언트 또는 컴퓨터 클라이언트에 직접 연결하는 데 적합한 경량 프록시 서비스입니다. 웹페이지 패널이 아닙니다. 클라이언트는 서버 IP, 포트, 비밀번호, 암호화 방법만 입력하면 됩니다."
+			local app_url="프로젝트 주소:${gh_https_url}github.com/shadowsocks/shadowsocks-rust"
+			local docker_name="ssserver-rust"
+			local app_workdir="/home/docker/shadowsocks-rust"
+			local docker_port="8388"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				read -e -p "Shadowsocks 비밀번호를 설정하고 Enter를 누르면 자동으로 임의의 비밀번호가 생성됩니다." ss_password
+				local ss_password=${ss_password:-$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16)}
+
+				read -e -p "암호화 방법을 설정하고 Enter를 눌러 기본값을 chacha20-ietf-poly1305로 설정합니다." ss_method
+				local ss_method=${ss_method:-chacha20-ietf-poly1305}
+				local ss_password_safe=$(printf '%s' "$ss_password" | sed 's/\\/\\\\/g; s/"/\\"/g')
+				local ss_method_safe=$(printf '%s' "$ss_method" | sed 's/\\/\\\\/g; s/"/\\"/g')
+
+				cat > "${app_workdir}/config.json" <<EOF
+{
+  "server": "0.0.0.0",
+  "server_port": ${docker_port},
+  "password": "${ss_password_safe}",
+  "method": "${ss_method_safe}",
+  "mode": "tcp_and_udp"
+}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+服务器端口: ${docker_port}
+密码: ${ss_password}
+加密方式: ${ss_method}
+传输协议: TCP + UDP
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/shadowsocks-rust-docker-compose.yml
+				sed -i "s/SSSERVER_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "설치 완료"
+				echo "클라이언트는 다음을 입력합니다."
+				echo "주소: 서버 IP 또는 도메인 이름"
+				echo "포트:${docker_port}"
+				echo "비밀번호:${ss_password}"
+				echo "암호화:${ss_method}"
+				echo "참고: 이는 웹 애플리케이션이 아닌 프록시 서비스이며 웹 페이지를 통해 되돌릴 수 없습니다."
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/shadowsocks-rust-docker-compose.yml
+				sed -i "s/SSSERVER_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "업데이트 완료"
+				echo "현재 클라이언트 매개변수는 다음 위치에 저장됩니다.${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "앱이 제거되었습니다."
+			}
+
+		docker_app_plus
+		  ;;
+
+	  117|sqlserver|mssql|SQLServer|SQLSERVER)
+
+			local app_id="117"
+			local app_name="SQL Server 데이터베이스 서비스"
+			local app_text="Microsoft SQL Server 데이터베이스. 웹 패널이 아니며 프로그램, Navicat, DBeaver 등의 클라이언트에 연결하는 데 적합합니다."
+			local app_url="프로젝트 주소:${gh_https_url}github.com/microsoft/mssql-docker"
+			local docker_name="sqlserver"
+			local app_workdir="/home/docker/sqlserver"
+			local docker_port="1433"
+			local app_size="5"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}/backup"
+				cd "${app_workdir}"
+
+				read -e -p "기본적으로 YourStrong!Passw0rd를 사용하려면 SA 비밀번호를 설정하고 Enter 키를 누르세요." sa_password
+				local sa_password=${sa_password:-YourStrong!Passw0rd}
+
+				cat > "${app_workdir}/.env" <<EOF
+SQLSERVER_PORT=${docker_port}
+MSSQL_SA_PASSWORD=${sa_password}
+EOF
+
+				cat > "${app_workdir}/client-info.txt" <<EOF
+服务器地址: 请填写你的服务器IP或域名
+端口: ${docker_port}
+用户名: sa
+密码: ${sa_password}
+数据库类型: Microsoft SQL Server
+备份目录: ${app_workdir}/backup
+EOF
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+
+				docker compose up -d
+
+				clear
+				echo "설치 완료"
+				echo "데이터베이스에 연결하려면 다음을 입력하세요."
+				echo "주소: 서버 IP 또는 도메인 이름"
+				echo "포트:${docker_port}"
+				echo "사용자 이름: sa"
+				echo "비밀번호:${sa_password}"
+				echo "참고: 이는 웹 애플리케이션이 아닌 데이터베이스 서비스입니다."
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/sqlserver-docker-compose.yml
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "업데이트 완료"
+				echo "연결 정보는 다음 위치에 저장됩니다.${app_workdir}/client-info.txt"
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "앱이 제거되었습니다."
+			}
+
+		docker_app_plus
+		  ;;
+
+	  118|re-director|redirector|redirect)
+
+			local app_id="118"
+			local app_name="re:디렉터 리디렉션 서비스"
+			local app_text="짧은 링크, 도메인 이름 리디렉션 및 301/302/307/308 리디렉션의 통합 관리에 적합한 자체 호스팅 리디렉션 관리 서비스입니다."
+			local app_url="프로젝트 주소:${gh_https_url}github.com/re-Director/re-director"
+			local docker_name="re-director"
+			local app_workdir="/home/docker/re-director"
+			local docker_port="8118"
+			local app_size="1"
+
+			docker_app_install() {
+				mkdir -p "${app_workdir}"
+				cd "${app_workdir}"
+
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+
+				docker compose up -d
+
+				clear
+				echo "설치 완료"
+				check_docker_app_ip
+				echo "팁: 로컬 시스템으로 리디렉션해야 하는 도메인 이름을 확인한 다음 패널에서 해당 리디렉션 규칙을 만듭니다."
+			}
+
+			docker_app_update() {
+				cd "${app_workdir}"
+				curl -o "${app_workdir}/docker-compose.yml" ${gh_proxy}raw.githubusercontent.com/cenet999/sh/main/re-director-docker-compose.yml
+				sed -i "s/RE_DIRECTOR_PORT_PLACEHOLDER/${docker_port}/g" "${app_workdir}/docker-compose.yml"
+				docker compose pull
+				docker compose up -d
+				clear
+				echo "업데이트 완료"
+				check_docker_app_ip
+			}
+
+			docker_app_uninstall() {
+				cd "${app_workdir}" && docker compose down --rmi all
+				rm -rf "${app_workdir}"
+				echo "앱이 제거되었습니다."
+			}
+
+		docker_app_plus
 		  ;;
 
 
@@ -19326,7 +19612,7 @@ linux_work() {
 	  echo -e "${gl_kjlan}2.   ${gl_bai}작업 영역 2"
 	  echo -e "${gl_kjlan}3.   ${gl_bai}작업 영역 3"
 	  echo -e "${gl_kjlan}4.   ${gl_bai}작업 영역 4"
-	  echo -e "${gl_kjlan}5.   ${gl_bai}작업 공간 5번"
+	  echo -e "${gl_kjlan}5.   ${gl_bai}작업 영역 5"
 	  echo -e "${gl_kjlan}6.   ${gl_bai}작업 영역 6"
 	  echo -e "${gl_kjlan}7.   ${gl_bai}작업 영역 7"
 	  echo -e "${gl_kjlan}8.   ${gl_bai}작업 영역 8"
@@ -19879,7 +20165,7 @@ env_menu() {
 		echo "=========== 시스템 환경 변수 관리 =========="
 		echo "현재 사용자:$USER"
 		echo "--------------------------------------"
-		echo "1. 현재 일반적으로 사용되는 환경변수를 확인하세요."
+		echo "1. 현재 일반적으로 사용되는 환경변수를 확인한다"
 		echo "2. ~/.bashrc 보기"
 		echo "3. ~/.profile 보기"
 		echo "4. ~/.bashrc 편집"
@@ -20001,7 +20287,7 @@ linux_Settings() {
 	  echo -e "${gl_kjlan}3.   ${gl_bai}사용자 비밀번호 로그인 모드${gl_kjlan}4.   ${gl_bai}지정된 버전의 Python 설치"
 	  echo -e "${gl_kjlan}5.   ${gl_bai}모든 포트 열기${gl_kjlan}6.   ${gl_bai}SSH 연결 포트 수정"
 	  echo -e "${gl_kjlan}7.   ${gl_bai}DNS 주소 최적화${gl_kjlan}8.   ${gl_bai}한 번의 클릭으로 시스템을 다시 설치${gl_huang}★${gl_bai}"
-	  echo -e "${gl_kjlan}9.   ${gl_bai}ROOT 계정을 비활성화하고 새 계정을 만듭니다.${gl_kjlan}10.  ${gl_bai}우선순위 ipv4/ipv6 전환"
+	  echo -e "${gl_kjlan}9.   ${gl_bai}ROOT 계정을 비활성화하고 새 계정을 만듭니다.${gl_kjlan}10.  ${gl_bai}우선 순위 ipv4/ipv6 전환"
 	  echo -e "${gl_kjlan}------------------------"
 	  echo -e "${gl_kjlan}11.  ${gl_bai}항만점유현황 확인${gl_kjlan}12.  ${gl_bai}가상 메모리 크기 수정"
 	  echo -e "${gl_kjlan}13.  ${gl_bai}사용자 관리${gl_kjlan}14.  ${gl_bai}사용자/비밀번호 생성기"
@@ -21515,7 +21801,7 @@ echo "------------------------"
 echo -e "${gl_zi}V.PS 월 6.9달러 도쿄 소프트뱅크 2코어 1G 메모리 20G 하드드라이브 월 1T 트래픽${gl_bai}"
 echo -e "${gl_bai}URL: https://vps.hosting/cart/tokyo-cloud-kvm-vps/?id=148&?affid=1355&?affid=1355${gl_bai}"
 echo "------------------------"
-echo -e "${gl_kjlan}더 인기 있는 VPS 혜택${gl_bai}"
+echo -e "${gl_kjlan}더 인기 있는 VPS 거래${gl_bai}"
 echo -e "${gl_bai}홈페이지: https://kejilion.pro/topvps/${gl_bai}"
 echo "------------------------"
 echo ""
@@ -21672,7 +21958,7 @@ while true; do
 				if [ -f ~/kejilion.sh.bak ]; then
 					mv -f ~/kejilion.sh.bak ~/kejilion.sh
 				fi
-				echo -e "${gl_hong}업데이트 실패! 다운로드 중 오류가 발생했거나 파일 확인에 실패했습니다. 원본 버전이 복원되었습니다.${gl_bai}"
+				echo -e "${gl_hong}업데이트에 실패했습니다! 다운로드 중 오류가 발생했거나 파일 확인에 실패했습니다. 원본 버전이 복원되었습니다.${gl_bai}"
 				send_stats "스크립트 업데이트 실패"
 			fi
 			break_end
