@@ -1432,6 +1432,12 @@ sanitize_domain_filename() {
 }
 
 
+restore_domain_filename() {
+	local domain="${1:-}"
+	printf '%s' "$domain" | sed 's/_wildcard_/*/g'
+}
+
+
 get_domain_storage_name() {
 	local domain="${1:-}"
 	if is_wildcard_domain "$domain"; then
@@ -1514,15 +1520,17 @@ install_ssltls() {
 
 
 install_ssltls_text() {
+	local cert_name
+	cert_name=$(get_domain_storage_name "$yuming")
 	echo -e "${gl_huang}$yuming 公钥信息${gl_bai}"
-	cat /etc/letsencrypt/live/$yuming/fullchain.pem
+	cat "/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	echo ""
 	echo -e "${gl_huang}$yuming 私钥信息${gl_bai}"
-	cat /etc/letsencrypt/live/$yuming/privkey.pem
+	cat "/etc/letsencrypt/live/$cert_name/privkey.pem"
 	echo ""
 	echo -e "${gl_huang}证书存放路径${gl_bai}"
-	echo "公钥: /etc/letsencrypt/live/$yuming/fullchain.pem"
-	echo "私钥: /etc/letsencrypt/live/$yuming/privkey.pem"
+	echo "公钥: /etc/letsencrypt/live/$cert_name/fullchain.pem"
+	echo "私钥: /etc/letsencrypt/live/$cert_name/privkey.pem"
 	echo ""
 }
 
@@ -1553,7 +1561,7 @@ ssl_ps() {
 	for cert_dir in /etc/letsencrypt/live/*; do
 	  local cert_file="$cert_dir/fullchain.pem"
 	  if [ -f "$cert_file" ]; then
-		local domain=$(basename "$cert_dir")
+		local domain=$(restore_domain_filename "$(basename "$cert_dir")")
 		local expire_date=$(openssl x509 -noout -enddate -in "$cert_file" | awk -F'=' '{print $2}')
 		local formatted_date=$(date -d "$expire_date" '+%Y-%m-%d')
 		printf "%-30s%s\n" "$domain" "$formatted_date"
@@ -3946,7 +3954,7 @@ ldnmp_web_status() {
 		echo -e "站点: ${output}                      证书到期时间"
 		echo -e "------------------------"
 		for cert_file in /home/web/certs/*_cert.pem; do
-		  local domain=$(basename "$cert_file" | sed 's/_cert.pem//')
+		  local domain=$(restore_domain_filename "$(basename "$cert_file" | sed 's/_cert.pem//')")
 		  if [ -n "$domain" ]; then
 			local expire_date=$(openssl x509 -noout -enddate -in "$cert_file" | awk -F'=' '{print $2}')
 			local formatted_date=$(date -d "$expire_date" '+%Y-%m-%d')
@@ -3956,7 +3964,10 @@ ldnmp_web_status() {
 
 		for conf_file in /home/web/conf.d/*_*.conf; do
 		  [ -e "$conf_file" ] || continue
-		  basename "$conf_file" .conf
+		  if grep -q "ssl_certificate" "$conf_file"; then
+			continue
+		  fi
+		  restore_domain_filename "$(basename "$conf_file" .conf)"
 		done
 
 		for conf_file in /home/web/conf.d/*.conf; do
@@ -3968,8 +3979,12 @@ ldnmp_web_status() {
 			continue
 		  fi
 
+		  if [[ "$filename" == *_*.conf ]]; then
+			continue
+		  fi
+
 		  if ! grep -q "ssl_certificate" "$conf_file"; then
-			basename "$conf_file" .conf
+			restore_domain_filename "$(basename "$conf_file" .conf)"
 		  fi
 		done
 
