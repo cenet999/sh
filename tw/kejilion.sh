@@ -111,7 +111,7 @@ UserLicenseAgreement() {
 	clear
 	echo -e "${gl_kjlan}歡迎使用科技lion腳本工具箱${gl_bai}"
 	echo "首次使用腳本，請先閱讀並同意使用者授權協議。"
-	echo "使用者授權協議: https://github.com/cenet999/sh/blob/main/LICENSE"
+	echo "用户许可协议: https://github.com/cenet999/sh/blob/main/LICENSE"
 	echo -e "----------------------"
 	read -e -p "是否同意以上條款？ (y/n):" user_input
 
@@ -1420,29 +1420,99 @@ install_certbot() {
 }
 
 
+is_wildcard_domain() {
+	local domain="${1:-}"
+	[[ "$domain" == \*.* ]]
+}
+
+
+sanitize_domain_filename() {
+	local domain="${1:-}"
+	printf '%s' "$domain" | sed 's/\*/_wildcard_/g'
+}
+
+
+restore_domain_filename() {
+	local domain="${1:-}"
+	printf '%s' "$domain" | sed 's/_wildcard_/*/g'
+}
+
+
+get_domain_storage_name() {
+	local domain="${1:-}"
+	if is_wildcard_domain "$domain"; then
+		sanitize_domain_filename "$domain"
+	else
+		printf '%s' "$domain"
+	fi
+}
+
+
+is_no_ssl_mode() {
+	case "${1:-}" in
+		no_ssl|nossl|no-ssl|http|无ssl|无SSL)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+
+disable_nginx_site_ssl() {
+	local conf_file="${1:-}"
+	[ -f "$conf_file" ] || return 1
+
+	sed -i \
+		-e '/listen 443 ssl;/d' \
+		-e '/listen \[::\]:443 ssl;/d' \
+		-e '/listen 443 quic;/d' \
+		-e '/listen \[::\]:443 quic;/d' \
+		-e '/ssl_certificate /d' \
+		-e '/ssl_certificate_key /d' \
+		-e '/add_header Alt-Svc/d' \
+		"$conf_file"
+
+	sed -i '/if (\$scheme = http)/,+2d' "$conf_file"
+}
+
+
 install_ssltls() {
 	  docker stop nginx > /dev/null 2>&1
 	  cd ~
 
-	  local file_path="/etc/letsencrypt/live/$yuming/fullchain.pem"
+	  local cert_name
+	  cert_name=$(get_domain_storage_name "$yuming")
+	  local file_path="/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	  if [ ! -f "$file_path" ]; then
 		 	local ipv4_pattern='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 			local ipv6_pattern='^(([0-9A-Fa-f]{1,4}:){1,7}:|([0-9A-Fa-f]{1,4}:){7,7}[0-9A-Fa-f]{1,4}|::1)$'
 			if [[ ($yuming =~ $ipv4_pattern || $yuming =~ $ipv6_pattern) ]]; then
-				mkdir -p /etc/letsencrypt/live/$yuming/
+				mkdir -p "/etc/letsencrypt/live/$cert_name/"
 				if command -v dnf &>/dev/null || command -v yum &>/dev/null; then
-					openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /etc/letsencrypt/live/$yuming/privkey.pem -out /etc/letsencrypt/live/$yuming/fullchain.pem -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
+					openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout "/etc/letsencrypt/live/$cert_name/privkey.pem" -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
 				else
-					openssl genpkey -algorithm Ed25519 -out /etc/letsencrypt/live/$yuming/privkey.pem
-					openssl req -x509 -key /etc/letsencrypt/live/$yuming/privkey.pem -out /etc/letsencrypt/live/$yuming/fullchain.pem -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
+					openssl genpkey -algorithm Ed25519 -out "/etc/letsencrypt/live/$cert_name/privkey.pem"
+					openssl req -x509 -key "/etc/letsencrypt/live/$cert_name/privkey.pem" -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
 				fi
+			elif is_wildcard_domain "$yuming"; then
+				local base_domain="${yuming#*.}"
+				mkdir -p "/etc/letsencrypt/live/$cert_name/"
+				openssl req -x509 -nodes -newkey rsa:2048 \
+				  -keyout "/etc/letsencrypt/live/$cert_name/privkey.pem" \
+				  -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" \
+				  -days 5475 \
+				  -subj "/CN=$yuming" \
+				  -addext "subjectAltName=DNS:$yuming,DNS:$base_domain"
+				echo "偵測到泛域名$yuming，已生成自簽證書。如需瀏覽器可信任證書，請手動匯入 DNS 驗證申請的泛網域證書。"
 			else
 				docker run --rm -p 80:80 -v /etc/letsencrypt/:/etc/letsencrypt certbot/certbot certonly --standalone -d "$yuming" --email your@email.com --agree-tos --no-eff-email --force-renewal --key-type ecdsa
 			fi
 	  fi
 	  mkdir -p /home/web/certs/
-	  cp /etc/letsencrypt/live/$yuming/fullchain.pem /home/web/certs/${yuming}_cert.pem > /dev/null 2>&1
-	  cp /etc/letsencrypt/live/$yuming/privkey.pem /home/web/certs/${yuming}_key.pem > /dev/null 2>&1
+	  cp "/etc/letsencrypt/live/$cert_name/fullchain.pem" "/home/web/certs/${cert_name}_cert.pem" > /dev/null 2>&1
+	  cp "/etc/letsencrypt/live/$cert_name/privkey.pem" "/home/web/certs/${cert_name}_key.pem" > /dev/null 2>&1
 
 	  docker start nginx > /dev/null 2>&1
 }
@@ -1450,15 +1520,17 @@ install_ssltls() {
 
 
 install_ssltls_text() {
+	local cert_name
+	cert_name=$(get_domain_storage_name "$yuming")
 	echo -e "${gl_huang}$yuming公鑰資訊${gl_bai}"
-	cat /etc/letsencrypt/live/$yuming/fullchain.pem
+	cat "/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	echo ""
 	echo -e "${gl_huang}$yuming私鑰資訊${gl_bai}"
-	cat /etc/letsencrypt/live/$yuming/privkey.pem
+	cat "/etc/letsencrypt/live/$cert_name/privkey.pem"
 	echo ""
 	echo -e "${gl_huang}證書存放路徑${gl_bai}"
-	echo "公鑰: /etc/letsencrypt/live/$yuming/fullchain.pem"
-	echo "私鑰: /etc/letsencrypt/live/$yuming/privkey.pem"
+	echo "公鑰: /etc/letsencrypt/live/$cert_name/fullchain.pem"
+	echo "私鑰: /etc/letsencrypt/live/$cert_name/privkey.pem"
 	echo ""
 }
 
@@ -1489,7 +1561,7 @@ ssl_ps() {
 	for cert_dir in /etc/letsencrypt/live/*; do
 	  local cert_file="$cert_dir/fullchain.pem"
 	  if [ -f "$cert_file" ]; then
-		local domain=$(basename "$cert_dir")
+		local domain=$(restore_domain_filename "$(basename "$cert_dir")")
 		local expire_date=$(openssl x509 -noout -enddate -in "$cert_file" | awk -F'=' '{print $2}')
 		local formatted_date=$(date -d "$expire_date" '+%Y-%m-%d')
 		printf "%-30s%s\n" "$domain" "$formatted_date"
@@ -1521,7 +1593,9 @@ certs_status() {
 
 	sleep 1
 
-	local file_path="/etc/letsencrypt/live/$yuming/fullchain.pem"
+	local cert_name
+	cert_name=$(get_domain_storage_name "$yuming")
+	local file_path="/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	if [ -f "$file_path" ]; then
 		send_stats "網域證書申請成功"
 	else
@@ -1550,8 +1624,8 @@ certs_status() {
 	  	  	send_stats "導入已有證書"
 
 			# 定義檔案路徑
-			local cert_file="/home/web/certs/${yuming}_cert.pem"
-			local key_file="/home/web/certs/${yuming}_key.pem"
+			local cert_file="/home/web/certs/${cert_name}_cert.pem"
+			local key_file="/home/web/certs/${cert_name}_key.pem"
 
 			mkdir -p /home/web/certs
 
@@ -1602,7 +1676,9 @@ certs_status() {
 
 
 repeat_add_yuming() {
-if [ -e /home/web/conf.d/$yuming.conf ]; then
+local conf_name
+conf_name=$(get_domain_storage_name "$yuming")
+if [ -e "/home/web/conf.d/$conf_name.conf" ]; then
   send_stats "網域重複使用"
   web_del "${yuming}" > /dev/null 2>&1
 fi
@@ -1782,10 +1858,12 @@ web_del() {
 
 	for yuming in $yuming_list; do
 		echo "正在刪除網域名稱:$yuming"
-		rm -r /home/web/html/$yuming > /dev/null 2>&1
-		rm /home/web/conf.d/$yuming.conf > /dev/null 2>&1
-		rm /home/web/certs/${yuming}_key.pem > /dev/null 2>&1
-		rm /home/web/certs/${yuming}_cert.pem > /dev/null 2>&1
+		local storage_name
+		storage_name=$(get_domain_storage_name "$yuming")
+		rm -r "/home/web/html/$yuming" > /dev/null 2>&1
+		rm "/home/web/conf.d/$storage_name.conf" > /dev/null 2>&1
+		rm "/home/web/certs/${storage_name}_key.pem" > /dev/null 2>&1
+		rm "/home/web/certs/${storage_name}_cert.pem" > /dev/null 2>&1
 
 		# 將網域名稱轉換為資料庫名
 		dbname=$(echo "$yuming" | sed -e 's/[^A-Za-z0-9]/_/g')
@@ -3454,13 +3532,15 @@ nginx_web_on() {
 
 	local ipv4_pattern='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 	local ipv6_pattern='^(([0-9A-Fa-f]{1,4}:){1,7}:|([0-9A-Fa-f]{1,4}:){7,7}[0-9A-Fa-f]{1,4}|::1)$'
+	local site_name
+	site_name=$(get_domain_storage_name "$yuming")
 
 	echo "您的$webname搭建好了！"
 
 	if [[ "$yuming" =~ $ipv4_pattern || "$yuming" =~ $ipv6_pattern ]]; then
-		mv /home/web/conf.d/"$yuming".conf /home/web/conf.d/"${yuming}_${access_port}".conf
+		mv "/home/web/conf.d/$site_name.conf" "/home/web/conf.d/${site_name}_${access_port}.conf"
 		echo "http://$yuming:$access_port"
-	elif grep -q '^[[:space:]]*#.*if (\$scheme = http)' "/home/web/conf.d/"$yuming".conf"; then
+	elif ! grep -q "ssl_certificate" "/home/web/conf.d/$site_name.conf"; then
 		echo "http://$yuming"
 	else
 		echo "https://$yuming"
@@ -3521,12 +3601,18 @@ ldnmp_Proxy() {
 	yuming="${1:-}"
 	reverseproxy="${2:-}"
 	port="${3:-}"
+	local ssl_mode="${4:-}"
+	local site_name
 
+	if is_no_ssl_mode "$ssl_mode"; then
+		webname="反向代理-IP+端口+无SSL"
+	fi
 	send_stats "安裝$webname"
 	echo "開始部署$webname"
 	if [ -z "$yuming" ]; then
 		add_yuming
 	fi
+	site_name=$(get_domain_storage_name "$yuming")
 
 	check_ip_and_get_access_port "$yuming"
 
@@ -3540,18 +3626,21 @@ ldnmp_Proxy() {
 	fi
 	nginx_install_status
 
-
-	install_ssltls
-	certs_status
+	if ! is_no_ssl_mode "$ssl_mode"; then
+		install_ssltls
+		certs_status
+	fi
 
 	wget -O /home/web/conf.d/map.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/map.conf
-	wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-backend.conf
+	wget -O "/home/web/conf.d/$site_name.conf" ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-backend.conf
 
 	backend=$(tr -dc 'A-Za-z' < /dev/urandom | head -c 8)
-	sed -i "s/backend_yuming_com/backend_$backend/g" /home/web/conf.d/"$yuming".conf
+	sed -i "s/backend_yuming_com/backend_$backend/g" "/home/web/conf.d/$site_name.conf"
 
 
-	sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
+	sed -i "s|/etc/nginx/certs/yuming.com_cert.pem|/etc/nginx/certs/${site_name}_cert.pem|g" "/home/web/conf.d/$site_name.conf"
+	sed -i "s|/etc/nginx/certs/yuming.com_key.pem|/etc/nginx/certs/${site_name}_key.pem|g" "/home/web/conf.d/$site_name.conf"
+	sed -i "s/yuming.com/$yuming/g" "/home/web/conf.d/$site_name.conf"
 
 	reverseproxy_port="$reverseproxy:$port"
 	upstream_servers=""
@@ -3559,10 +3648,13 @@ ldnmp_Proxy() {
 		upstream_servers="$upstream_servers    server $server;\n"
 	done
 
-	sed -i "s/# 動態添加/$upstream_servers/g" /home/web/conf.d/$yuming.conf
-	sed -i '/remote_addr/d' /home/web/conf.d/$yuming.conf
+	sed -i "s/# 動態添加/$upstream_servers/g" "/home/web/conf.d/$site_name.conf"
+	sed -i '/remote_addr/d' "/home/web/conf.d/$site_name.conf"
+	if is_no_ssl_mode "$ssl_mode"; then
+		disable_nginx_site_ssl "/home/web/conf.d/$site_name.conf"
+	fi
 
-	update_nginx_listen_port "$yuming" "$access_port"
+	update_nginx_listen_port "$site_name" "$access_port"
 
 	nginx_http_on
 	if ! docker exec nginx nginx -s reload; then
@@ -3862,7 +3954,7 @@ ldnmp_web_status() {
 		echo -e "站點:${output}證書到期時間"
 		echo -e "------------------------"
 		for cert_file in /home/web/certs/*_cert.pem; do
-		  local domain=$(basename "$cert_file" | sed 's/_cert.pem//')
+		  local domain=$(restore_domain_filename "$(basename "$cert_file" | sed 's/_cert.pem//')")
 		  if [ -n "$domain" ]; then
 			local expire_date=$(openssl x509 -noout -enddate -in "$cert_file" | awk -F'=' '{print $2}')
 			local formatted_date=$(date -d "$expire_date" '+%Y-%m-%d')
@@ -3872,7 +3964,10 @@ ldnmp_web_status() {
 
 		for conf_file in /home/web/conf.d/*_*.conf; do
 		  [ -e "$conf_file" ] || continue
-		  basename "$conf_file" .conf
+		  if grep -q "ssl_certificate" "$conf_file"; then
+			continue
+		  fi
+		  restore_domain_filename "$(basename "$conf_file" .conf)"
 		done
 
 		for conf_file in /home/web/conf.d/*.conf; do
@@ -3884,8 +3979,12 @@ ldnmp_web_status() {
 			continue
 		  fi
 
+		  if [[ "$filename" == *_*.conf ]]; then
+			continue
+		  fi
+
 		  if ! grep -q "ssl_certificate" "$conf_file"; then
-			basename "$conf_file" .conf
+			restore_domain_filename "$(basename "$conf_file" .conf)"
 		  fi
 		done
 
@@ -4209,7 +4308,7 @@ remote_port = ${remote_port}
 EOF
 
 	# 輸出產生的信息
-	echo "服務$service_name已成功加入到 frpc.toml"
+	echo "服務$service_name已成功加入 frpc.toml"
 
 	docker restart frpc
 
@@ -9032,6 +9131,7 @@ linux_ldnmp() {
 	echo -e "${gl_huang}25.  ${gl_bai}安裝Bitwarden密碼管理平台${gl_huang}26.  ${gl_bai}安裝Halo部落格網站"
 	echo -e "${gl_huang}27.  ${gl_bai}安裝AI繪畫提示詞產生器${gl_huang}28.  ${gl_bai}站點反向代理-負載平衡"
 	echo -e "${gl_huang}29.  ${gl_bai}Stream四層代理轉發${gl_huang}30.  ${gl_bai}自訂靜態站點"
+	echo -e "${gl_huang}39.  ${gl_bai}站點反向代理-IP+連接埠+無SSL"
 	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}31.  ${gl_bai}站點資料管理${gl_huang}★${gl_bai}                    ${gl_huang}32.  ${gl_bai}備份全站數據"
 	echo -e "${gl_huang}33.  ${gl_bai}定時遠端備份${gl_huang}34.  ${gl_bai}還原全站數據"
@@ -9553,6 +9653,20 @@ linux_ldnmp() {
 		close_port "$port"
 		echo "已阻止IP+連接埠存取該服務"
 	  else
+		ip_address
+		close_port "$port"
+		block_container_port "$docker_name" "$ipv4_address"
+	  fi
+
+		;;
+
+	  39)
+	  ldnmp_Proxy "" "" "" "no_ssl"
+	  find_container_by_host_port "$port"
+	  if [ -z "$docker_name" ]; then
+		close_port "$port"
+		echo "已阻止IP+連接埠存取該服務"
+	  else
 	  	ip_address
 		close_port "$port"
 		block_container_port "$docker_name" "$ipv4_address"
@@ -9566,7 +9680,10 @@ linux_ldnmp() {
 	  send_stats "安裝$webname"
 	  echo "開始部署$webname"
 	  add_yuming
+	  local site_name
+	  site_name=$(get_domain_storage_name "$yuming")
 	  echo -e "域名格式:${gl_huang}google.com${gl_bai}"
+	  echo -e "泛網域名稱範例:${gl_huang}*.name.com${gl_bai}"
 	  read -e -p "請輸入你的反代網域:" fandai_yuming
 	  nginx_install_status
 
@@ -9574,9 +9691,11 @@ linux_ldnmp() {
 	  certs_status
 
 
-	  wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-domain.conf
-	  sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
-	  sed -i "s|fandaicom|$fandai_yuming|g" /home/web/conf.d/$yuming.conf
+	  wget -O "/home/web/conf.d/$site_name.conf" ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-domain.conf
+	  sed -i "s|/etc/nginx/certs/yuming.com_cert.pem|/etc/nginx/certs/${site_name}_cert.pem|g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s|/etc/nginx/certs/yuming.com_key.pem|/etc/nginx/certs/${site_name}_key.pem|g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s/yuming.com/$yuming/g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s|fandaicom|$fandai_yuming|g" "/home/web/conf.d/$site_name.conf"
 
 
 	  nginx_http_on
@@ -15351,7 +15470,7 @@ openclaw_backup_restore_menu() {
 
 		domains=$(openclaw_find_webui_domain)
 		if [ -n "$domains" ]; then
-			echo "網域地址："
+			echo "網域名稱地址："
 			echo "$domains" | while read d; do
 				echo "https://${d}/#token=${token}"
 			done
@@ -19475,7 +19594,7 @@ EOF
 				clear
 				echo "安裝完成"
 				check_docker_app_ip
-				echo "提示：把需要跳轉的網域解析到本機，再到面板建立對應的重定向規則即可。"
+				echo "提示：把需要跳转的域名解析到本机，再到面板里创建对应的重定向规则即可。"
 			}
 
 			docker_app_update() {
@@ -22118,6 +22237,7 @@ echo "LDNMP站台管理 k web"
 echo "LDNMP快取清理 k web cache"
 echo "安裝WordPress k wp |k wordpress |k wp xxx.com"
 echo "安裝反向代理 k fd |k rp |k 反代 |k fd xxx.com"
+echo "安裝反代無SSL k fd-nossl |k rp-nossl |k fd xxx.com 127.0.0.1 3000 no_ssl"
 echo "安裝負載平衡 k loadbalance |k 負載平衡"
 echo "安裝L4負載平衡 k stream |k L4負載平衡"
 echo "防火牆面板 k fhq |k 防火牆"
@@ -22210,6 +22330,20 @@ else
 			  close_port "$port"
 	  		  block_container_port "$docker_name" "$ipv4_address"
 	  		fi
+			;;
+
+		fd-nossl|rp-nossl|反代无ssl|反代无SSL)
+			shift
+			ldnmp_Proxy "$1" "$2" "$3" "no_ssl"
+			find_container_by_host_port "$port"
+			if [ -z "$docker_name" ]; then
+			  close_port "$port"
+			  echo "已阻止IP+連接埠存取該服務"
+			else
+			  ip_address
+			  close_port "$port"
+			  block_container_port "$docker_name" "$ipv4_address"
+			fi
 			;;
 
 		loadbalance|负载均衡)

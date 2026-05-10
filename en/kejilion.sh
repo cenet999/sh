@@ -876,7 +876,7 @@ close_port() {
 		iptables -D INPUT -p tcp --dport $port -j ACCEPT 2>/dev/null
 		iptables -D INPUT -p udp --dport $port -j ACCEPT 2>/dev/null
 
-		# Add a shutdown rule
+		# Add shutdown rule
 		if ! iptables -C INPUT -p tcp --dport $port -j DROP 2>/dev/null; then
 			iptables -I INPUT 1 -p tcp --dport $port -j DROP
 		fi
@@ -1420,29 +1420,99 @@ install_certbot() {
 }
 
 
+is_wildcard_domain() {
+	local domain="${1:-}"
+	[[ "$domain" == \*.* ]]
+}
+
+
+sanitize_domain_filename() {
+	local domain="${1:-}"
+	printf '%s' "$domain" | sed 's/\*/_wildcard_/g'
+}
+
+
+restore_domain_filename() {
+	local domain="${1:-}"
+	printf '%s' "$domain" | sed 's/_wildcard_/*/g'
+}
+
+
+get_domain_storage_name() {
+	local domain="${1:-}"
+	if is_wildcard_domain "$domain"; then
+		sanitize_domain_filename "$domain"
+	else
+		printf '%s' "$domain"
+	fi
+}
+
+
+is_no_ssl_mode() {
+	case "${1:-}" in
+		no_ssl|nossl|no-ssl|http|无ssl|无SSL)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+
+disable_nginx_site_ssl() {
+	local conf_file="${1:-}"
+	[ -f "$conf_file" ] || return 1
+
+	sed -i \
+		-e '/listen 443 ssl;/d' \
+		-e '/listen \[::\]:443 ssl;/d' \
+		-e '/listen 443 quic;/d' \
+		-e '/listen \[::\]:443 quic;/d' \
+		-e '/ssl_certificate /d' \
+		-e '/ssl_certificate_key /d' \
+		-e '/add_header Alt-Svc/d' \
+		"$conf_file"
+
+	sed -i '/if (\$scheme = http)/,+2d' "$conf_file"
+}
+
+
 install_ssltls() {
 	  docker stop nginx > /dev/null 2>&1
 	  cd ~
 
-	  local file_path="/etc/letsencrypt/live/$yuming/fullchain.pem"
+	  local cert_name
+	  cert_name=$(get_domain_storage_name "$yuming")
+	  local file_path="/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	  if [ ! -f "$file_path" ]; then
 		 	local ipv4_pattern='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 			local ipv6_pattern='^(([0-9A-Fa-f]{1,4}:){1,7}:|([0-9A-Fa-f]{1,4}:){7,7}[0-9A-Fa-f]{1,4}|::1)$'
 			if [[ ($yuming =~ $ipv4_pattern || $yuming =~ $ipv6_pattern) ]]; then
-				mkdir -p /etc/letsencrypt/live/$yuming/
+				mkdir -p "/etc/letsencrypt/live/$cert_name/"
 				if command -v dnf &>/dev/null || command -v yum &>/dev/null; then
-					openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /etc/letsencrypt/live/$yuming/privkey.pem -out /etc/letsencrypt/live/$yuming/fullchain.pem -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
+					openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout "/etc/letsencrypt/live/$cert_name/privkey.pem" -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
 				else
-					openssl genpkey -algorithm Ed25519 -out /etc/letsencrypt/live/$yuming/privkey.pem
-					openssl req -x509 -key /etc/letsencrypt/live/$yuming/privkey.pem -out /etc/letsencrypt/live/$yuming/fullchain.pem -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
+					openssl genpkey -algorithm Ed25519 -out "/etc/letsencrypt/live/$cert_name/privkey.pem"
+					openssl req -x509 -key "/etc/letsencrypt/live/$cert_name/privkey.pem" -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
 				fi
+			elif is_wildcard_domain "$yuming"; then
+				local base_domain="${yuming#*.}"
+				mkdir -p "/etc/letsencrypt/live/$cert_name/"
+				openssl req -x509 -nodes -newkey rsa:2048 \
+				  -keyout "/etc/letsencrypt/live/$cert_name/privkey.pem" \
+				  -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" \
+				  -days 5475 \
+				  -subj "/CN=$yuming" \
+				  -addext "subjectAltName=DNS:$yuming,DNS:$base_domain"
+				echo "Generic domain name detected$yuming, a self-signed certificate has been generated. If you need a browser trusted certificate, please manually import the domain name certificate applied for DNS verification."
 			else
 				docker run --rm -p 80:80 -v /etc/letsencrypt/:/etc/letsencrypt certbot/certbot certonly --standalone -d "$yuming" --email your@email.com --agree-tos --no-eff-email --force-renewal --key-type ecdsa
 			fi
 	  fi
 	  mkdir -p /home/web/certs/
-	  cp /etc/letsencrypt/live/$yuming/fullchain.pem /home/web/certs/${yuming}_cert.pem > /dev/null 2>&1
-	  cp /etc/letsencrypt/live/$yuming/privkey.pem /home/web/certs/${yuming}_key.pem > /dev/null 2>&1
+	  cp "/etc/letsencrypt/live/$cert_name/fullchain.pem" "/home/web/certs/${cert_name}_cert.pem" > /dev/null 2>&1
+	  cp "/etc/letsencrypt/live/$cert_name/privkey.pem" "/home/web/certs/${cert_name}_key.pem" > /dev/null 2>&1
 
 	  docker start nginx > /dev/null 2>&1
 }
@@ -1450,15 +1520,17 @@ install_ssltls() {
 
 
 install_ssltls_text() {
+	local cert_name
+	cert_name=$(get_domain_storage_name "$yuming")
 	echo -e "${gl_huang}$yumingPublic key information${gl_bai}"
-	cat /etc/letsencrypt/live/$yuming/fullchain.pem
+	cat "/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	echo ""
 	echo -e "${gl_huang}$yumingPrivate key information${gl_bai}"
-	cat /etc/letsencrypt/live/$yuming/privkey.pem
+	cat "/etc/letsencrypt/live/$cert_name/privkey.pem"
 	echo ""
 	echo -e "${gl_huang}Certificate storage path${gl_bai}"
-	echo "Public key: /etc/letsencrypt/live/$yuming/fullchain.pem"
-	echo "Private key: /etc/letsencrypt/live/$yuming/privkey.pem"
+	echo "Public key: /etc/letsencrypt/live/$cert_name/fullchain.pem"
+	echo "Private key: /etc/letsencrypt/live/$cert_name/privkey.pem"
 	echo ""
 }
 
@@ -1489,7 +1561,7 @@ ssl_ps() {
 	for cert_dir in /etc/letsencrypt/live/*; do
 	  local cert_file="$cert_dir/fullchain.pem"
 	  if [ -f "$cert_file" ]; then
-		local domain=$(basename "$cert_dir")
+		local domain=$(restore_domain_filename "$(basename "$cert_dir")")
 		local expire_date=$(openssl x509 -noout -enddate -in "$cert_file" | awk -F'=' '{print $2}')
 		local formatted_date=$(date -d "$expire_date" '+%Y-%m-%d')
 		printf "%-30s%s\n" "$domain" "$formatted_date"
@@ -1521,7 +1593,9 @@ certs_status() {
 
 	sleep 1
 
-	local file_path="/etc/letsencrypt/live/$yuming/fullchain.pem"
+	local cert_name
+	cert_name=$(get_domain_storage_name "$yuming")
+	local file_path="/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	if [ -f "$file_path" ]; then
 		send_stats "Domain name certificate application successful"
 	else
@@ -1550,8 +1624,8 @@ certs_status() {
 	  	  	send_stats "Import existing certificate"
 
 			# Define file path
-			local cert_file="/home/web/certs/${yuming}_cert.pem"
-			local key_file="/home/web/certs/${yuming}_key.pem"
+			local cert_file="/home/web/certs/${cert_name}_cert.pem"
+			local key_file="/home/web/certs/${cert_name}_key.pem"
 
 			mkdir -p /home/web/certs
 
@@ -1602,7 +1676,9 @@ certs_status() {
 
 
 repeat_add_yuming() {
-if [ -e /home/web/conf.d/$yuming.conf ]; then
+local conf_name
+conf_name=$(get_domain_storage_name "$yuming")
+if [ -e "/home/web/conf.d/$conf_name.conf" ]; then
   send_stats "Domain name reuse"
   web_del "${yuming}" > /dev/null 2>&1
 fi
@@ -1782,10 +1858,12 @@ web_del() {
 
 	for yuming in $yuming_list; do
 		echo "Domain name is being deleted:$yuming"
-		rm -r /home/web/html/$yuming > /dev/null 2>&1
-		rm /home/web/conf.d/$yuming.conf > /dev/null 2>&1
-		rm /home/web/certs/${yuming}_key.pem > /dev/null 2>&1
-		rm /home/web/certs/${yuming}_cert.pem > /dev/null 2>&1
+		local storage_name
+		storage_name=$(get_domain_storage_name "$yuming")
+		rm -r "/home/web/html/$yuming" > /dev/null 2>&1
+		rm "/home/web/conf.d/$storage_name.conf" > /dev/null 2>&1
+		rm "/home/web/certs/${storage_name}_key.pem" > /dev/null 2>&1
+		rm "/home/web/certs/${storage_name}_cert.pem" > /dev/null 2>&1
 
 		# Convert domain name to database name
 		dbname=$(echo "$yuming" | sed -e 's/[^A-Za-z0-9]/_/g')
@@ -3454,13 +3532,15 @@ nginx_web_on() {
 
 	local ipv4_pattern='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 	local ipv6_pattern='^(([0-9A-Fa-f]{1,4}:){1,7}:|([0-9A-Fa-f]{1,4}:){7,7}[0-9A-Fa-f]{1,4}|::1)$'
+	local site_name
+	site_name=$(get_domain_storage_name "$yuming")
 
 	echo "your$webnameIt's built!"
 
 	if [[ "$yuming" =~ $ipv4_pattern || "$yuming" =~ $ipv6_pattern ]]; then
-		mv /home/web/conf.d/"$yuming".conf /home/web/conf.d/"${yuming}_${access_port}".conf
+		mv "/home/web/conf.d/$site_name.conf" "/home/web/conf.d/${site_name}_${access_port}.conf"
 		echo "http://$yuming:$access_port"
-	elif grep -q '^[[:space:]]*#.*if (\$scheme = http)' "/home/web/conf.d/"$yuming".conf"; then
+	elif ! grep -q "ssl_certificate" "/home/web/conf.d/$site_name.conf"; then
 		echo "http://$yuming"
 	else
 		echo "https://$yuming"
@@ -3521,12 +3601,18 @@ ldnmp_Proxy() {
 	yuming="${1:-}"
 	reverseproxy="${2:-}"
 	port="${3:-}"
+	local ssl_mode="${4:-}"
+	local site_name
 
+	if is_no_ssl_mode "$ssl_mode"; then
+		webname="Reverse proxy-IP+port+no SSL"
+	fi
 	send_stats "Install$webname"
 	echo "Start deployment$webname"
 	if [ -z "$yuming" ]; then
 		add_yuming
 	fi
+	site_name=$(get_domain_storage_name "$yuming")
 
 	check_ip_and_get_access_port "$yuming"
 
@@ -3540,18 +3626,21 @@ ldnmp_Proxy() {
 	fi
 	nginx_install_status
 
-
-	install_ssltls
-	certs_status
+	if ! is_no_ssl_mode "$ssl_mode"; then
+		install_ssltls
+		certs_status
+	fi
 
 	wget -O /home/web/conf.d/map.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/map.conf
-	wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-backend.conf
+	wget -O "/home/web/conf.d/$site_name.conf" ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-backend.conf
 
 	backend=$(tr -dc 'A-Za-z' < /dev/urandom | head -c 8)
-	sed -i "s/backend_yuming_com/backend_$backend/g" /home/web/conf.d/"$yuming".conf
+	sed -i "s/backend_yuming_com/backend_$backend/g" "/home/web/conf.d/$site_name.conf"
 
 
-	sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
+	sed -i "s|/etc/nginx/certs/yuming.com_cert.pem|/etc/nginx/certs/${site_name}_cert.pem|g" "/home/web/conf.d/$site_name.conf"
+	sed -i "s|/etc/nginx/certs/yuming.com_key.pem|/etc/nginx/certs/${site_name}_key.pem|g" "/home/web/conf.d/$site_name.conf"
+	sed -i "s/yuming.com/$yuming/g" "/home/web/conf.d/$site_name.conf"
 
 	reverseproxy_port="$reverseproxy:$port"
 	upstream_servers=""
@@ -3559,10 +3648,13 @@ ldnmp_Proxy() {
 		upstream_servers="$upstream_servers    server $server;\n"
 	done
 
-	sed -i "s/# dynamically add/$upstream_servers/g" /home/web/conf.d/$yuming.conf
-	sed -i '/remote_addr/d' /home/web/conf.d/$yuming.conf
+	sed -i "s/# dynamically add/$upstream_servers/g" "/home/web/conf.d/$site_name.conf"
+	sed -i '/remote_addr/d' "/home/web/conf.d/$site_name.conf"
+	if is_no_ssl_mode "$ssl_mode"; then
+		disable_nginx_site_ssl "/home/web/conf.d/$site_name.conf"
+	fi
 
-	update_nginx_listen_port "$yuming" "$access_port"
+	update_nginx_listen_port "$site_name" "$access_port"
 
 	nginx_http_on
 	if ! docker exec nginx nginx -s reload; then
@@ -3862,7 +3954,7 @@ ldnmp_web_status() {
 		echo -e "Site:${output}Certificate expiration time"
 		echo -e "------------------------"
 		for cert_file in /home/web/certs/*_cert.pem; do
-		  local domain=$(basename "$cert_file" | sed 's/_cert.pem//')
+		  local domain=$(restore_domain_filename "$(basename "$cert_file" | sed 's/_cert.pem//')")
 		  if [ -n "$domain" ]; then
 			local expire_date=$(openssl x509 -noout -enddate -in "$cert_file" | awk -F'=' '{print $2}')
 			local formatted_date=$(date -d "$expire_date" '+%Y-%m-%d')
@@ -3872,7 +3964,10 @@ ldnmp_web_status() {
 
 		for conf_file in /home/web/conf.d/*_*.conf; do
 		  [ -e "$conf_file" ] || continue
-		  basename "$conf_file" .conf
+		  if grep -q "ssl_certificate" "$conf_file"; then
+			continue
+		  fi
+		  restore_domain_filename "$(basename "$conf_file" .conf)"
 		done
 
 		for conf_file in /home/web/conf.d/*.conf; do
@@ -3884,8 +3979,12 @@ ldnmp_web_status() {
 			continue
 		  fi
 
+		  if [[ "$filename" == *_*.conf ]]; then
+			continue
+		  fi
+
 		  if ! grep -q "ssl_certificate" "$conf_file"; then
-			basename "$conf_file" .conf
+			restore_domain_filename "$(basename "$conf_file" .conf)"
 		  fi
 		done
 
@@ -5134,7 +5233,7 @@ fetch_github_ssh_keys() {
 	local base_dir="${2:-$HOME}"
 
 	echo "Before proceeding, make sure you have added your SSH public key to your GitHub account:"
-	echo "1. Log in${gh_https_url}github.com/settings/keys"
+	echo "1. Login${gh_https_url}github.com/settings/keys"
 	echo "2. Click New SSH key or Add SSH key"
 	echo "3. Title can be filled in as desired (for example: Home Laptop 2026)"
 	echo "4. Paste the contents of the local public key (usually the entire contents of ~/.ssh/id_ed25519.pub or id_rsa.pub) into the Key field"
@@ -6640,9 +6739,9 @@ send_stats "Command Favorites"
 bash <(curl -l -s ${gh_proxy}raw.githubusercontent.com/byJoey/cmdbox/refs/heads/main/install.sh)
 }
 
-# Create a backup
+# Create backup
 create_backup() {
-	send_stats "Create a backup"
+	send_stats "Create backup"
 	local TIMESTAMP=$(date +"%Y%m%d%H%M%S")
 
 	# Prompt user for backup directory
@@ -6684,7 +6783,7 @@ create_backup() {
 		echo "- $path"
 	done
 
-	# Create a backup
+	# Create backup
 	echo "Creating backup$BACKUP_NAME..."
 	install tar
 	tar -czvf "$BACKUP_DIR/$BACKUP_NAME" "${BACKUP_PATHS[@]}"
@@ -8123,7 +8222,7 @@ docker_ssh_migration() {
 				local VOL_ARGS=""
 				for path in $VOL_PATHS; do VOL_ARGS+="-v $path:$path "; done
 
-				# Mirror
+				# mirror
 				local IMAGE
 				IMAGE=$(jq -r '.[0].Config.Image' "$inspect_file")
 
@@ -8284,7 +8383,7 @@ docker_ssh_migration() {
 
 		echo -e "${gl_huang}Transferring backup...${gl_bai}"
 		if [[ -z "$TARGET_PASS" ]]; then
-			# Log in using key
+			# Log in with key
 			scp -P "$TARGET_PORT" -o StrictHostKeyChecking=no -r "$LATEST_TAR" "$TARGET_USER@$TARGET_IP:/tmp/"
 		fi
 
@@ -9032,6 +9131,7 @@ linux_ldnmp() {
 	echo -e "${gl_huang}25.  ${gl_bai}Install Bitwarden Password Management Platform${gl_huang}26.  ${gl_bai}Install Halo Blog Site"
 	echo -e "${gl_huang}27.  ${gl_bai}Install the AI ​​painting prompt word generator${gl_huang}28.  ${gl_bai}Site reverse proxy-load balancing"
 	echo -e "${gl_huang}29.  ${gl_bai}Stream four-layer proxy forwarding${gl_huang}30.  ${gl_bai}Custom static site"
+	echo -e "${gl_huang}39.  ${gl_bai}Site reverse proxy-IP+port+no SSL"
 	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}31.  ${gl_bai}Site data management${gl_huang}★${gl_bai}                    ${gl_huang}32.  ${gl_bai}Back up site-wide data"
 	echo -e "${gl_huang}33.  ${gl_bai}Scheduled remote backup${gl_huang}34.  ${gl_bai}Restore whole site data"
@@ -9553,6 +9653,20 @@ linux_ldnmp() {
 		close_port "$port"
 		echo "IP+port has been blocked from accessing the service"
 	  else
+		ip_address
+		close_port "$port"
+		block_container_port "$docker_name" "$ipv4_address"
+	  fi
+
+		;;
+
+	  39)
+	  ldnmp_Proxy "" "" "" "no_ssl"
+	  find_container_by_host_port "$port"
+	  if [ -z "$docker_name" ]; then
+		close_port "$port"
+		echo "IP+port has been blocked from accessing the service"
+	  else
 	  	ip_address
 		close_port "$port"
 		block_container_port "$docker_name" "$ipv4_address"
@@ -9566,7 +9680,10 @@ linux_ldnmp() {
 	  send_stats "Install$webname"
 	  echo "Start deployment$webname"
 	  add_yuming
+	  local site_name
+	  site_name=$(get_domain_storage_name "$yuming")
 	  echo -e "Domain name format:${gl_huang}google.com${gl_bai}"
+	  echo -e "Example of a generic domain name:${gl_huang}*.name.com${gl_bai}"
 	  read -e -p "Please enter your reverse proxy domain name:" fandai_yuming
 	  nginx_install_status
 
@@ -9574,9 +9691,11 @@ linux_ldnmp() {
 	  certs_status
 
 
-	  wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-domain.conf
-	  sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
-	  sed -i "s|fandaicom|$fandai_yuming|g" /home/web/conf.d/$yuming.conf
+	  wget -O "/home/web/conf.d/$site_name.conf" ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-domain.conf
+	  sed -i "s|/etc/nginx/certs/yuming.com_cert.pem|/etc/nginx/certs/${site_name}_cert.pem|g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s|/etc/nginx/certs/yuming.com_key.pem|/etc/nginx/certs/${site_name}_key.pem|g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s/yuming.com/$yuming/g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s|fandaicom|$fandai_yuming|g" "/home/web/conf.d/$site_name.conf"
 
 
 	  nginx_http_on
@@ -10495,8 +10614,8 @@ PY
 
 
 	start_bot() {
-		echo "Starting OpenClaw..."
-		send_stats "Starting OpenClaw..."
+		echo "Start OpenClaw..."
+		send_stats "Start OpenClaw..."
 		start_gateway
 		break_end
 	}
@@ -13798,7 +13917,7 @@ EOF
 		model_path=$(openclaw_memory_expand_path "$model_path")
 		model_status=$(openclaw_memory_local_model_status "$model_path")
 		if [ "$model_status" = "ok" ]; then
-			echo "✅ The model file already exists:$model_path"
+			echo "✅ Model file already exists:$model_path"
 			OPENCLAW_MEMORY_MODEL_PATH="$model_path"
 		else
 			local model_name="embeddinggemma-300M-Q8_0.gguf"
@@ -14496,7 +14615,7 @@ print(json.dumps(data, indent=2))
 		if openclaw_has_command openclaw && echo "$json_payload" | openclaw approvals set --stdin >/dev/null 2>&1; then
 			return 0
 		fi
-		# Fallback: Write the file directly
+		# Fallback: write file directly
 		echo "$json_payload" > "$approvals_file"
 	}
 
@@ -15905,7 +16024,7 @@ while true; do
 			check_docker_image_update $docker_name
 
 			clear
-			echo -e "postal service$check_docker $update_status"
+			echo -e "postal services$check_docker $update_status"
 			echo "poste.io is an open source mail server solution,"
 			echo "Video introduction: https://www.bilibili.com/video/BV1wv421C71t?t=0.1"
 
@@ -18228,7 +18347,7 @@ while true; do
 
 		}
 
-		local docker_describe="A program to watch movies and live broadcasts together remotely. It provides simultaneous viewing, live broadcast, chat and other functions"
+		local docker_describe="A program for watching movies and live broadcasts together remotely. It provides simultaneous viewing, live broadcast, chat and other functions"
 		local docker_url="Official website introduction:${gh_https_url}github.com/synctv-org/synctv"
 		local docker_use="echo \"Initial account and password: root. Please change the login password in time after logging in\""
 		local docker_passwd=""
@@ -19998,7 +20117,7 @@ log_menu() {
 		show_log_overview
 		echo
 		echo "=========== System log management menu ==========="
-		echo "1. View the latest system log (journal)"
+		echo "1. Check the latest system log (journal)"
 		echo "2. View the specified service log"
 		echo "3. View login/security logs"
 		echo "4. Real-time tracking logs"
@@ -20355,7 +20474,7 @@ linux_Settings() {
 			echo "python version management"
 			echo "Video introduction: https://www.bilibili.com/video/BV1Pm42157cK?t=0.1"
 			echo "---------------------------------------"
-			echo "This function can seamlessly install any version officially supported by Python!"
+			echo "This function can seamlessly install any version officially supported by python!"
 			local VERSION=$(python3 -V 2>&1 | awk '{print $2}')
 			echo -e "Current python version number:${gl_huang}$VERSION${gl_bai}"
 			echo "------------"
@@ -21684,7 +21803,7 @@ while true; do
 	  echo -e "${gl_kjlan}Execute tasks in batches${gl_bai}"
 	  echo -e "${gl_kjlan}11. ${gl_bai}Install technology lion script${gl_kjlan}12. ${gl_bai}Update system${gl_kjlan}13. ${gl_bai}Clean the system"
 	  echo -e "${gl_kjlan}14. ${gl_bai}Install docker${gl_kjlan}15. ${gl_bai}Install BBR3${gl_kjlan}16. ${gl_bai}Set 1G virtual memory"
-	  echo -e "${gl_kjlan}17. ${gl_bai}Set time zone to Shanghai${gl_kjlan}18. ${gl_bai}Open all ports${gl_kjlan}51. ${gl_bai}Custom instructions"
+	  echo -e "${gl_kjlan}17. ${gl_bai}Set time zone to Shanghai${gl_kjlan}18. ${gl_bai}Open all ports${gl_kjlan}51. ${gl_bai}custom directive"
 	  echo -e "${gl_kjlan}------------------------${gl_bai}"
 	  echo -e "${gl_kjlan}0.  ${gl_bai}Return to main menu"
 	  echo -e "${gl_kjlan}------------------------${gl_bai}"
@@ -21801,7 +21920,7 @@ echo "------------------------"
 echo -e "${gl_zi}V.PS 6.9 dollars per month Tokyo Softbank 2 cores 1G memory 20G hard drive 1T traffic per month${gl_bai}"
 echo -e "${gl_bai}URL: https://vps.hosting/cart/tokyo-cloud-kvm-vps/?id=148&?affid=1355&?affid=1355${gl_bai}"
 echo "------------------------"
-echo -e "${gl_kjlan}More popular VPS deals${gl_bai}"
+echo -e "${gl_kjlan}More popular VPS offers${gl_bai}"
 echo -e "${gl_bai}Website: https://kejilion.pro/topvps/${gl_bai}"
 echo "------------------------"
 echo ""
@@ -22118,6 +22237,7 @@ echo "LDNMP site management k web"
 echo "LDNMP cache cleaning k web cache"
 echo "Install WordPress k wp | k wordpress | k wp xxx.com"
 echo "Install reverse proxy k fd |k rp |k reverse proxy |k fd xxx.com"
+echo "Install reverse generation no SSL k fd-nossl |k rp-nossl |k fd xxx.com 127.0.0.1 3000 no_ssl"
 echo "Install load balancing k loadbalance |k load balancing"
 echo "Install L4 load balancing k stream |k L4 load balancing"
 echo "firewall panel k fhq |k firewall"
@@ -22210,6 +22330,20 @@ else
 			  close_port "$port"
 	  		  block_container_port "$docker_name" "$ipv4_address"
 	  		fi
+			;;
+
+		fd-nossl|rp-nossl|反代无ssl|反代无SSL)
+			shift
+			ldnmp_Proxy "$1" "$2" "$3" "no_ssl"
+			find_container_by_host_port "$port"
+			if [ -z "$docker_name" ]; then
+			  close_port "$port"
+			  echo "IP+port has been blocked from accessing the service"
+			else
+			  ip_address
+			  close_port "$port"
+			  block_container_port "$docker_name" "$ipv4_address"
+			fi
 			;;
 
 		loadbalance|负载均衡)
