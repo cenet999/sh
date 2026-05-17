@@ -1420,29 +1420,63 @@ install_certbot() {
 }
 
 
+is_wildcard_domain() {
+	local domain="${1:-}"
+	[[ "$domain" == \*.* ]]
+}
+
+
+sanitize_domain_filename() {
+	local domain="${1:-}"
+	printf '%s' "$domain" | sed 's/\*/_wildcard_/g'
+}
+
+
+get_domain_storage_name() {
+	local domain="${1:-}"
+	if is_wildcard_domain "$domain"; then
+		sanitize_domain_filename "$domain"
+	else
+		printf '%s' "$domain"
+	fi
+}
+
+
 install_ssltls() {
 	  docker stop nginx > /dev/null 2>&1
 	  cd ~
 
-	  local file_path="/etc/letsencrypt/live/$yuming/fullchain.pem"
+	  local cert_name
+	  cert_name=$(get_domain_storage_name "$yuming")
+	  local file_path="/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	  if [ ! -f "$file_path" ]; then
 		 	local ipv4_pattern='^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
 			local ipv6_pattern='^(([0-9A-Fa-f]{1,4}:){1,7}:|([0-9A-Fa-f]{1,4}:){7,7}[0-9A-Fa-f]{1,4}|::1)$'
 			if [[ ($yuming =~ $ipv4_pattern || $yuming =~ $ipv6_pattern) ]]; then
-				mkdir -p /etc/letsencrypt/live/$yuming/
+				mkdir -p "/etc/letsencrypt/live/$cert_name/"
 				if command -v dnf &>/dev/null || command -v yum &>/dev/null; then
-					openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout /etc/letsencrypt/live/$yuming/privkey.pem -out /etc/letsencrypt/live/$yuming/fullchain.pem -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
+					openssl req -x509 -nodes -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -keyout "/etc/letsencrypt/live/$cert_name/privkey.pem" -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
 				else
-					openssl genpkey -algorithm Ed25519 -out /etc/letsencrypt/live/$yuming/privkey.pem
-					openssl req -x509 -key /etc/letsencrypt/live/$yuming/privkey.pem -out /etc/letsencrypt/live/$yuming/fullchain.pem -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
+					openssl genpkey -algorithm Ed25519 -out "/etc/letsencrypt/live/$cert_name/privkey.pem"
+					openssl req -x509 -key "/etc/letsencrypt/live/$cert_name/privkey.pem" -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" -days 5475 -subj "/C=US/ST=State/L=City/O=Organization/OU=Organizational Unit/CN=Common Name"
 				fi
+			elif is_wildcard_domain "$yuming"; then
+				local base_domain="${yuming#*.}"
+				mkdir -p "/etc/letsencrypt/live/$cert_name/"
+				openssl req -x509 -nodes -newkey rsa:2048 \
+				  -keyout "/etc/letsencrypt/live/$cert_name/privkey.pem" \
+				  -out "/etc/letsencrypt/live/$cert_name/fullchain.pem" \
+				  -days 5475 \
+				  -subj "/CN=$yuming" \
+				  -addext "subjectAltName=DNS:$yuming,DNS:$base_domain"
+				echo "检测到泛域名 $yuming，已生成自签证书。如需浏览器可信证书，请手动导入 DNS 验证申请的泛域名证书。"
 			else
 				docker run --rm -p 80:80 -v /etc/letsencrypt/:/etc/letsencrypt certbot/certbot certonly --standalone -d "$yuming" --email your@email.com --agree-tos --no-eff-email --force-renewal --key-type ecdsa
 			fi
 	  fi
 	  mkdir -p /home/web/certs/
-	  cp /etc/letsencrypt/live/$yuming/fullchain.pem /home/web/certs/${yuming}_cert.pem > /dev/null 2>&1
-	  cp /etc/letsencrypt/live/$yuming/privkey.pem /home/web/certs/${yuming}_key.pem > /dev/null 2>&1
+	  cp "/etc/letsencrypt/live/$cert_name/fullchain.pem" "/home/web/certs/${cert_name}_cert.pem" > /dev/null 2>&1
+	  cp "/etc/letsencrypt/live/$cert_name/privkey.pem" "/home/web/certs/${cert_name}_key.pem" > /dev/null 2>&1
 
 	  docker start nginx > /dev/null 2>&1
 }
@@ -1521,7 +1555,9 @@ certs_status() {
 
 	sleep 1
 
-	local file_path="/etc/letsencrypt/live/$yuming/fullchain.pem"
+	local cert_name
+	cert_name=$(get_domain_storage_name "$yuming")
+	local file_path="/etc/letsencrypt/live/$cert_name/fullchain.pem"
 	if [ -f "$file_path" ]; then
 		send_stats "域名证书申请成功"
 	else
@@ -1550,8 +1586,8 @@ certs_status() {
 	  	  	send_stats "导入已有证书"
 
 			# 定义文件路径
-			local cert_file="/home/web/certs/${yuming}_cert.pem"
-			local key_file="/home/web/certs/${yuming}_key.pem"
+			local cert_file="/home/web/certs/${cert_name}_cert.pem"
+			local key_file="/home/web/certs/${cert_name}_key.pem"
 
 			mkdir -p /home/web/certs
 
@@ -1602,7 +1638,9 @@ certs_status() {
 
 
 repeat_add_yuming() {
-if [ -e /home/web/conf.d/$yuming.conf ]; then
+local conf_name
+conf_name=$(get_domain_storage_name "$yuming")
+if [ -e "/home/web/conf.d/$conf_name.conf" ]; then
   send_stats "域名重复使用"
   web_del "${yuming}" > /dev/null 2>&1
 fi
@@ -1782,10 +1820,12 @@ web_del() {
 
 	for yuming in $yuming_list; do
 		echo "正在删除域名: $yuming"
-		rm -r /home/web/html/$yuming > /dev/null 2>&1
-		rm /home/web/conf.d/$yuming.conf > /dev/null 2>&1
-		rm /home/web/certs/${yuming}_key.pem > /dev/null 2>&1
-		rm /home/web/certs/${yuming}_cert.pem > /dev/null 2>&1
+		local storage_name
+		storage_name=$(get_domain_storage_name "$yuming")
+		rm -r "/home/web/html/$yuming" > /dev/null 2>&1
+		rm "/home/web/conf.d/$storage_name.conf" > /dev/null 2>&1
+		rm "/home/web/certs/${storage_name}_key.pem" > /dev/null 2>&1
+		rm "/home/web/certs/${storage_name}_cert.pem" > /dev/null 2>&1
 
 		# 将域名转换为数据库名
 		dbname=$(echo "$yuming" | sed -e 's/[^A-Za-z0-9]/_/g')
@@ -7714,6 +7754,7 @@ linux_tools() {
 	  echo -e "${gl_kjlan}13.  ${gl_bai}ncdu 磁盘占用查看工具             ${gl_kjlan}14.  ${gl_bai}fzf 全局搜索工具"
 	  echo -e "${gl_kjlan}15.  ${gl_bai}vim 文本编辑器                    ${gl_kjlan}16.  ${gl_bai}nano 文本编辑器 ${gl_huang}★${gl_bai}"
 	  echo -e "${gl_kjlan}17.  ${gl_bai}git 版本控制系统                  ${gl_kjlan}18.  ${gl_bai}opencode AI编程助手 ${gl_huang}★${gl_bai}"
+	  echo -e "${gl_kjlan}19.  ${gl_bai}V2Ray-Agent安装脚本"
 	  echo -e "${gl_kjlan}------------------------"
 	  echo -e "${gl_kjlan}21.  ${gl_bai}黑客帝国屏保                      ${gl_kjlan}22.  ${gl_bai}跑火车屏保"
 	  echo -e "${gl_kjlan}26.  ${gl_bai}俄罗斯方块小游戏                  ${gl_kjlan}27.  ${gl_bai}贪吃蛇小游戏"
@@ -7880,6 +7921,16 @@ linux_tools() {
 			  source ~/.profile
 			  opencode
 			  send_stats "安装opencode"
+			  ;;
+
+			19)
+			  clear
+			  send_stats "安装V2Ray-Agent安装脚本"
+			  root_use
+			  install wget
+			  wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh"
+			  chmod 700 /root/install.sh
+			  /root/install.sh
 			  ;;
 
 
@@ -9021,17 +9072,12 @@ linux_ldnmp() {
 	echo -e "${gl_huang}LDNMP建站"
 	ldnmp_tato
 	echo -e "${gl_huang}------------------------"
-	echo -e "${gl_huang}1.   ${gl_bai}安装LDNMP环境 ${gl_huang}★${gl_bai}                   ${gl_huang}2.   ${gl_bai}安装WordPress ${gl_huang}★${gl_bai}"
-	echo -e "${gl_huang}3.   ${gl_bai}安装Discuz论坛                    ${gl_huang}4.   ${gl_bai}安装可道云桌面"
-	echo -e "${gl_huang}5.   ${gl_bai}安装苹果CMS影视站                 ${gl_huang}6.   ${gl_bai}安装独角数发卡网"
-	echo -e "${gl_huang}7.   ${gl_bai}安装flarum论坛网站                ${gl_huang}8.   ${gl_bai}安装typecho轻量博客网站"
-	echo -e "${gl_huang}9.   ${gl_bai}安装LinkStack共享链接平台         ${gl_huang}20.  ${gl_bai}自定义动态站点"
-	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}21.  ${gl_bai}仅安装nginx ${gl_huang}★${gl_bai}                     ${gl_huang}22.  ${gl_bai}站点重定向"
 	echo -e "${gl_huang}23.  ${gl_bai}站点反向代理-IP+端口 ${gl_huang}★${gl_bai}            ${gl_huang}24.  ${gl_bai}站点反向代理-域名"
 	echo -e "${gl_huang}25.  ${gl_bai}安装Bitwarden密码管理平台         ${gl_huang}26.  ${gl_bai}安装Halo博客网站"
 	echo -e "${gl_huang}27.  ${gl_bai}安装AI绘画提示词生成器            ${gl_huang}28.  ${gl_bai}站点反向代理-负载均衡"
 	echo -e "${gl_huang}29.  ${gl_bai}Stream四层代理转发                ${gl_huang}30.  ${gl_bai}自定义静态站点"
+	echo -e "${gl_huang}39.  ${gl_bai}自定义静态站点（仅HTTP）"
 	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}31.  ${gl_bai}站点数据管理 ${gl_huang}★${gl_bai}                    ${gl_huang}32.  ${gl_bai}备份全站数据"
 	echo -e "${gl_huang}33.  ${gl_bai}定时远程备份                      ${gl_huang}34.  ${gl_bai}还原全站数据"
@@ -9566,7 +9612,10 @@ linux_ldnmp() {
 	  send_stats "安装$webname"
 	  echo "开始部署 $webname"
 	  add_yuming
+	  local site_name
+	  site_name=$(get_domain_storage_name "$yuming")
 	  echo -e "域名格式: ${gl_huang}google.com${gl_bai}"
+	  echo -e "泛域名示例: ${gl_huang}*.name.com${gl_bai}"
 	  read -e -p "请输入你的反代域名: " fandai_yuming
 	  nginx_install_status
 
@@ -9574,9 +9623,11 @@ linux_ldnmp() {
 	  certs_status
 
 
-	  wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-domain.conf
-	  sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
-	  sed -i "s|fandaicom|$fandai_yuming|g" /home/web/conf.d/$yuming.conf
+	  wget -O "/home/web/conf.d/$site_name.conf" ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/reverse-proxy-domain.conf
+	  sed -i "s|/etc/nginx/certs/yuming.com_cert.pem|/etc/nginx/certs/${site_name}_cert.pem|g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s|/etc/nginx/certs/yuming.com_key.pem|/etc/nginx/certs/${site_name}_key.pem|g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s/yuming.com/$yuming/g" "/home/web/conf.d/$site_name.conf"
+	  sed -i "s|fandaicom|$fandai_yuming|g" "/home/web/conf.d/$site_name.conf"
 
 
 	  nginx_http_on
@@ -9722,6 +9773,60 @@ linux_ldnmp() {
 
 
 
+
+	39)
+	  clear
+	  webname="静态站点（仅HTTP）"
+	  send_stats "安装$webname"
+	  echo "开始部署 $webname"
+	  add_yuming
+	  repeat_add_yuming
+	  nginx_install_status
+
+	  wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/html.conf
+	  sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
+	  sed -i '/listen 443 ssl;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/listen \[::\]:443 ssl;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/listen 443 quic;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/listen \[::\]:443 quic;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/ssl_certificate_key/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/ssl_certificate/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/# SSL 证书配置/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/# HTTP 重定向到 HTTPS/,+3d' /home/web/conf.d/$yuming.conf
+	  sed -i 's#root /var/www/html/yuming.com;#root /var/www/html/'"$yuming"';#g' /home/web/conf.d/$yuming.conf
+	  sed -i "s#/home/web/#/var/www/#g" /home/web/conf.d/$yuming.conf
+
+	  cd /home/web/html
+	  mkdir -p $yuming
+	  cd $yuming
+
+	  clear
+	  echo -e "[${gl_huang}1/2${gl_bai}] 上传静态源码"
+	  echo "-------------"
+	  echo "目前只允许上传zip格式的源码包，请将源码包放到/home/web/html/${yuming}目录下"
+	  read -e -p "也可以输入下载链接，远程下载源码包，直接回车将跳过远程下载： " url_download
+
+	  if [ -n "$url_download" ]; then
+		  wget "$url_download"
+	  fi
+	  unzip $(ls -t *.zip | head -n 1)
+	  rm -f $(ls -t *.zip | head -n 1)
+
+	  clear
+	  echo -e "[${gl_huang}2/2${gl_bai}] index.html所在路径"
+	  echo "-------------"
+	  find "$(realpath .)" -name "index.html" -print | xargs -I {} dirname {}
+
+	  read -e -p "请输入index.html的路径，类似（/home/web/html/$yuming/index/）： " index_lujing
+	  sed -i "s#root /var/www/html/$yuming/#root $index_lujing#g" /home/web/conf.d/$yuming.conf
+	  sed -i "s#/home/web/#/var/www/#g" /home/web/conf.d/$yuming.conf
+
+	  docker exec nginx chmod -R nginx:nginx /var/www/html
+	  docker exec nginx nginx -s reload
+
+	  nginx_web_on
+
+		;;
 
 	31)
 	  ldnmp_web_status
@@ -19494,6 +19599,7 @@ EOF
 
 		docker_app_plus
 		  ;;
+
 
 
 	  b)
