@@ -9120,19 +9120,12 @@ linux_ldnmp() {
 	echo -e "${gl_huang}LDNMP建站"
 	ldnmp_tato
 	echo -e "${gl_huang}------------------------"
-	echo -e "${gl_huang}1.   ${gl_bai}安装LDNMP环境 ${gl_huang}★${gl_bai}                   ${gl_huang}2.   ${gl_bai}安装WordPress ${gl_huang}★${gl_bai}"
-	echo -e "${gl_huang}3.   ${gl_bai}安装Discuz论坛                    ${gl_huang}4.   ${gl_bai}安装可道云桌面"
-	echo -e "${gl_huang}5.   ${gl_bai}安装苹果CMS影视站                 ${gl_huang}6.   ${gl_bai}安装独角数发卡网"
-	echo -e "${gl_huang}7.   ${gl_bai}安装flarum论坛网站                ${gl_huang}8.   ${gl_bai}安装typecho轻量博客网站"
-	echo -e "${gl_huang}9.   ${gl_bai}安装LinkStack共享链接平台         ${gl_huang}20.  ${gl_bai}自定义动态站点"
-	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}21.  ${gl_bai}仅安装nginx ${gl_huang}★${gl_bai}                     ${gl_huang}22.  ${gl_bai}站点重定向"
 	echo -e "${gl_huang}23.  ${gl_bai}站点反向代理-IP+端口 ${gl_huang}★${gl_bai}            ${gl_huang}24.  ${gl_bai}站点反向代理-域名"
 	echo -e "${gl_huang}25.  ${gl_bai}安装Bitwarden密码管理平台         ${gl_huang}26.  ${gl_bai}安装Halo博客网站"
 	echo -e "${gl_huang}27.  ${gl_bai}安装AI绘画提示词生成器            ${gl_huang}28.  ${gl_bai}站点反向代理-负载均衡"
 	echo -e "${gl_huang}29.  ${gl_bai}Stream四层代理转发                ${gl_huang}30.  ${gl_bai}自定义静态站点"
 	echo -e "${gl_huang}39.  ${gl_bai}站点反向代理-IP+端口+无SSL"
-	echo -e "${gl_huang}40.  ${gl_bai}自定义静态站点（仅HTTP）"
 	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}31.  ${gl_bai}站点数据管理 ${gl_huang}★${gl_bai}                    ${gl_huang}32.  ${gl_bai}备份全站数据"
 	echo -e "${gl_huang}33.  ${gl_bai}定时远程备份                      ${gl_huang}34.  ${gl_bai}还原全站数据"
@@ -15774,6 +15767,7 @@ while true; do
 	  echo -e "${gl_kjlan}113. ${color113}Firefox浏览器                       ${gl_kjlan}114. ${color114}OpenClaw机器人管理工具${gl_huang}★${gl_bai}"
 	  echo -e "${gl_kjlan}115. ${color115}V2RayA代理管理面板                  ${gl_kjlan}116. ${color116}Shadowsocks Rust代理服务端"
 	  echo -e "${gl_kjlan}117. ${color117}SQL Server数据库服务                ${gl_kjlan}118. ${color118}re:Director重定向服务"
+	  echo -e "${gl_kjlan}119. ${color119}Nginx静态应用站"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}第三方应用列表"
   	  echo -e "${gl_kjlan}想要让你的应用出现在这里？查看开发者指南: ${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
@@ -19671,6 +19665,155 @@ EOF
 		docker_app_plus
 		  ;;
 
+
+	  119|nginx-static|nginx|static-nginx)
+
+			local app_id="119"
+			local app_name="Nginx静态应用站"
+			local app_text="适合托管静态页面、前端打包产物和单页应用，按域名目录独立部署更方便管理。"
+			local app_url="镜像地址: https://hub.docker.com/_/nginx"
+			local docker_name="nginx-static"
+			local docker_port="8080"
+			local app_size="1"
+			local domain_file="/home/docker/nginx-static_domain.conf"
+			local port_file="/home/docker/nginx-static_port.conf"
+
+			docker_app_install() {
+				local site_domain="${site_domain_input}"
+				local app_workdir="/home/docker/${site_domain}"
+				local safe_name=$(echo "$site_domain" | tr '.ABCDEFGHIJKLMNOPQRSTUVWXYZ' '-abcdefghijklmnopqrstuvwxyz')
+
+				mkdir -p "${app_workdir}/html"
+				cd "${app_workdir}"
+
+				cat > "${app_workdir}/docker-compose.yml" <<EOF
+name: nginx-static-${safe_name}
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: nginx-static-${safe_name}
+    restart: always
+    ports:
+      - "${docker_port}:80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+EOF
+
+				cat > "${app_workdir}/nginx.conf" <<EOF
+server {
+    listen 80;
+    server_name ${site_domain};
+
+    root /usr/share/nginx/html;
+    index index.html index.htm;
+
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+}
+EOF
+
+				cat > "${app_workdir}/html/index.html" <<EOF
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${site_domain}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 40px; background: #f7f7f7; color: #222; }
+    .box { max-width: 720px; margin: 0 auto; background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+    h1 { margin-top: 0; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>${site_domain}</h1>
+    <p>静态站点已经部署完成。</p>
+    <p>你可以把前端构建文件放到 <code>/home/docker/${site_domain}/html</code> 目录下。</p>
+  </div>
+</body>
+</html>
+EOF
+
+			docker compose up -d
+			echo "${site_domain}" > "${domain_file}"
+			echo "${docker_port}" > "${port_file}"
+
+			clear
+			echo "安装完成"
+			check_docker_app_ip
+			echo "网站目录: ${app_workdir}/html"
+			echo "Compose文件: ${app_workdir}/docker-compose.yml"
+		}
+
+		docker_app_update() {
+			local site_domain=""
+			local app_workdir=""
+			if [ -f "${domain_file}" ]; then
+				site_domain=$(cat "${domain_file}")
+			else
+				read -e -p "请输入域名: " site_domain
+			fi
+			if [ -z "${site_domain}" ]; then
+				echo "域名不能为空"
+				return 1
+			fi
+			app_workdir="/home/docker/${site_domain}"
+			if [ -f "${port_file}" ]; then
+				docker_port=$(cat "${port_file}")
+			fi
+			cd "${app_workdir}"
+			docker compose pull
+			docker compose up -d
+			clear
+			echo "更新完成"
+			check_docker_app_ip
+		}
+
+		docker_app_uninstall() {
+			local site_domain=""
+			local app_workdir=""
+			if [ -f "${domain_file}" ]; then
+				site_domain=$(cat "${domain_file}")
+			else
+				read -e -p "请输入域名: " site_domain
+			fi
+			if [ -z "${site_domain}" ]; then
+				echo "域名不能为空"
+				return 1
+			fi
+			app_workdir="/home/docker/${site_domain}"
+			cd "${app_workdir}" && docker compose down --rmi all
+			rm -rf "${app_workdir}"
+			rm -f "${domain_file}" "${port_file}"
+			echo "应用已卸载"
+		}
+
+		read -e -p "请输入域名（用于目录名和站点名称）: " site_domain_input
+		read -e -p "请输入对外访问端口，回车默认使用${docker_port}端口: " app_port
+		if [ -z "${site_domain_input}" ]; then
+			echo "域名不能为空"
+			break_end
+		else
+			docker_port=${app_port:-${docker_port}}
+
+			if ss -tuln | grep -q ":$docker_port "; then
+				echo -e "${gl_hong}错误: ${gl_bai}端口 $docker_port 已被占用，请更换一个端口"
+				break_end
+			else
+				setup_docker_dir
+				check_disk_space $app_size /home/docker
+				install_docker
+				docker_app_install
+				add_app_id
+				send_stats "$app_name 安装"
+			fi
+		fi
+		  ;;
 
 	  b)
 	  	clear
