@@ -6739,6 +6739,15 @@ send_stats "命令收藏夹"
 bash <(curl -l -s ${gh_proxy}raw.githubusercontent.com/byJoey/cmdbox/refs/heads/main/install.sh)
 }
 
+v2ray_agent_install() {
+	send_stats "安装V2Ray-Agent安装脚本"
+	root_use
+	install wget
+	wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh"
+	chmod 700 /root/install.sh
+	/root/install.sh
+}
+
 # 创建备份
 create_backup() {
 	send_stats "创建备份"
@@ -21548,12 +21557,7 @@ EOF
 
 		  43)
 			  clear
-			  send_stats "安装V2Ray-Agent安装脚本"
-			  root_use
-			  install wget
-			  wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh"
-			  chmod 700 /root/install.sh
-			  /root/install.sh
+			  v2ray_agent_install
 			  ;;
 
 		  61)

@@ -11,24 +11,6 @@
 <p align="center">
   <a href="/README.md">
     <img src="https://img.shields.io/badge/简体中文-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="简体中文" style="margin: 5px;">
-  </a> 
-  <a href="/README.tw.md">
-    <img src="https://img.shields.io/badge/繁體中文-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="繁體中文" style="margin: 5px;">
-  </a>
-  <a href="/README.md">
-    <img src="https://img.shields.io/badge/English-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="English" style="margin: 5px;">
-  </a>
-  <a href="/README.kr.md">
-    <img src="https://img.shields.io/badge/한국어-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="한국어" style="margin: 5px;">
-  </a>
-  <a href="/README.ja.md">
-    <img src="https://img.shields.io/badge/日本語-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="日本語" style="margin: 5px;">
-  </a>
-  <a href="/README.ru.md">
-    <img src="https://img.shields.io/badge/Русский-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="Русский" style="margin: 5px;">
-  </a>  
-  <a href="/README.fa.md">
-    <img src="https://img.shields.io/badge/فارسی-2F4F4F?style=for-the-badge&logo=google-chrome&logoColor=white" alt="فارسی" style="margin: 5px;">
   </a>
 </p>
 
@@ -89,10 +71,6 @@ KejiLion's Shell script tool is an all-in-one script toolbox designed for Linux 
 bash <(curl -fsSL https://raw.githubusercontent.com/cenet999/sh/main/kejilion.sh)
 ```
 
-## 🚀 一键安装 (One-Click Installation) EN
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/cenet999/sh/main/en/kejilion.sh)
-```
 
 <br><br>
 
