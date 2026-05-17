@@ -9132,6 +9132,7 @@ linux_ldnmp() {
 	echo -e "${gl_huang}27.  ${gl_bai}安装AI绘画提示词生成器            ${gl_huang}28.  ${gl_bai}站点反向代理-负载均衡"
 	echo -e "${gl_huang}29.  ${gl_bai}Stream四层代理转发                ${gl_huang}30.  ${gl_bai}自定义静态站点"
 	echo -e "${gl_huang}39.  ${gl_bai}站点反向代理-IP+端口+无SSL"
+	echo -e "${gl_huang}40.  ${gl_bai}自定义静态站点（仅HTTP）"
 	echo -e "${gl_huang}------------------------"
 	echo -e "${gl_huang}31.  ${gl_bai}站点数据管理 ${gl_huang}★${gl_bai}                    ${gl_huang}32.  ${gl_bai}备份全站数据"
 	echo -e "${gl_huang}33.  ${gl_bai}定时远程备份                      ${gl_huang}34.  ${gl_bai}还原全站数据"
@@ -9673,6 +9674,59 @@ linux_ldnmp() {
 	  fi
 
 		;;
+
+	  40)
+	  clear
+	  webname="静态站点（仅HTTP）"
+	  send_stats "安装$webname"
+	  echo "开始部署 $webname"
+	  add_yuming
+	  repeat_add_yuming
+	  nginx_install_status
+
+	  wget -O /home/web/conf.d/$yuming.conf ${gh_proxy}raw.githubusercontent.com/kejilion/nginx/main/html.conf
+	  sed -i "s/yuming.com/$yuming/g" /home/web/conf.d/$yuming.conf
+	  sed -i '/listen 443 ssl;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/listen \[::\]:443 ssl;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/listen 443 quic;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/listen \[::\]:443 quic;/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/ssl_certificate_key/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/ssl_certificate/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/# SSL 证书配置/d' /home/web/conf.d/$yuming.conf
+	  sed -i '/# HTTP 重定向到 HTTPS/,+3d' /home/web/conf.d/$yuming.conf
+	  sed -i 's#root /var/www/html/yuming.com;#root /var/www/html/'"$yuming"';#g' /home/web/conf.d/$yuming.conf
+	  sed -i "s#/home/web/#/var/www/#g" /home/web/conf.d/$yuming.conf
+
+	  cd /home/web/html
+	  mkdir -p $yuming
+	  cd $yuming
+
+	  clear
+	  echo -e "[${gl_huang}1/2${gl_bai}] 上传静态源码"
+	  echo "-------------"
+	  echo "目前只允许上传zip格式的源码包，请将源码包放到/home/web/html/${yuming}目录下"
+	  read -e -p "也可以输入下载链接，远程下载源码包，直接回车将跳过远程下载： " url_download
+
+	  if [ -n "$url_download" ]; then
+		  wget "$url_download"
+	  fi
+	  unzip $(ls -t *.zip | head -n 1)
+	  rm -f $(ls -t *.zip | head -n 1)
+
+	  clear
+	  echo -e "[${gl_huang}2/2${gl_bai}] index.html所在路径"
+	  echo "-------------"
+	  find "$(realpath .)" -name "index.html" -print | xargs -I {} dirname {}
+
+	  read -e -p "请输入index.html的路径，类似（/home/web/html/$yuming/index/）： " index_lujing
+	  sed -i "s#root /var/www/html/$yuming/#root $index_lujing#g" /home/web/conf.d/$yuming.conf
+	  sed -i "s#/home/web/#/var/www/#g" /home/web/conf.d/$yuming.conf
+
+	  docker exec nginx chmod -R nginx:nginx /var/www/html
+	  docker exec nginx nginx -s reload
+
+	  nginx_web_on
+	  ;;
 
 	  24)
 	  clear
@@ -20428,6 +20482,8 @@ linux_Settings() {
 	  echo -e "${gl_kjlan}------------------------"
 	  echo -e "${gl_kjlan}41.  ${gl_bai}系统日志管理工具 ${gl_huang}★${gl_bai}                 ${gl_kjlan}42.  ${gl_bai}系统变量管理工具"
 	  echo -e "${gl_kjlan}------------------------"
+	  echo -e "${gl_kjlan}43.  ${gl_bai}V2Ray-Agent安装脚本"
+	  echo -e "${gl_kjlan}------------------------"
 	  echo -e "${gl_kjlan}61.  ${gl_bai}留言板                             ${gl_kjlan}66.  ${gl_bai}一条龙系统调优 ${gl_huang}★${gl_bai}"
 	  echo -e "${gl_kjlan}99.  ${gl_bai}重启服务器                         ${gl_kjlan}100. ${gl_bai}隐私与安全"
 	  echo -e "${gl_kjlan}101. ${gl_bai}k命令高级用法 ${gl_huang}★${gl_bai}                    ${gl_kjlan}102. ${gl_bai}卸载科技lion脚本"
@@ -21347,6 +21403,15 @@ EOF
 			  env_menu
 			  ;;
 
+		  43)
+			  clear
+			  send_stats "安装V2Ray-Agent安装脚本"
+			  root_use
+			  install wget
+			  wget -P /root -N --no-check-certificate "https://raw.githubusercontent.com/mack-a/v2ray-agent/master/install.sh"
+			  chmod 700 /root/install.sh
+			  /root/install.sh
+			  ;;
 
 		  61)
 			clear
