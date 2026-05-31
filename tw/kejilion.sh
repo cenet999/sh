@@ -3659,7 +3659,7 @@ ldnmp_Proxy() {
 	nginx_http_on
 	if ! docker exec nginx nginx -s reload; then
 		echo -e "${gl_hong}錯誤:${gl_bai}Nginx 容器重載失敗。"
-		echo "如果你是反代 Docker 应用时遇到这个问题，请先执行："
+		echo "如果你是反代 Docker 應用程式時遇到這個問題，請先執行："
 		echo "sudo systemctl restart docker"
 		echo "docker network ls"
 		return 1
@@ -13131,7 +13131,7 @@ if os.path.isdir(agents_root):
 
 
 		if command -v openclaw >/dev/null 2>&1; then
-			echo "⏸️ 还原前停止 OpenClaw gateway..."
+			echo "⏸️ 還原前停止 OpenClaw gateway..."
 			openclaw gateway stop >/dev/null 2>&1
 		fi
 
@@ -13304,7 +13304,7 @@ if os.path.isdir(agents_root):
 			break_end
 			return 0
 		fi
-		read -e -p "二次確認：輸入 DELETE 執行刪除:" confirm_step2
+		read -e -p "二次确认：输入 DELETE 执行删除: " confirm_step2
 		if [ "$confirm_step2" != "DELETE" ]; then
 			echo "已取消刪除。"
 			break_end
@@ -13312,9 +13312,9 @@ if os.path.isdir(agents_root):
 		fi
 
 		if rm -f -- "$target_path"; then
-			echo "✅ 刪除成功:$target_file"
+			echo "✅ 删除成功: $target_file"
 		else
-			echo "❌ 刪除失敗:$target_file"
+			echo "❌ 删除失败: $target_file"
 		fi
 		break_end
 	}
@@ -13823,7 +13823,7 @@ PY
 			return 1
 		fi
 		OPENCLAW_MEMORY_QMD_PATH="$qmd_path"
-		echo "✅ qmd 安裝完成:$qmd_path"
+		echo "✅ qmd 安装完成: $qmd_path"
 		return 0
 	}
 
@@ -14367,7 +14367,7 @@ EOF
 			echo "關鍵字不能為空。"
 			return 1
 		fi
-		echo "正在搜尋記憶..."
+		echo "正在搜索记忆..."
 		openclaw memory search "$query" --max-results 5
 	}
 
@@ -14845,7 +14845,7 @@ except Exception:
 			openclaw security audit --fix
 			echo -e "${gl_lv}✅ 自動修復完成。${gl_bai}"
 		fi
-		echo "按任意鍵返回..."
+		echo "按任意键返回..."
 		read -n 1 -s
 	}
 
@@ -15208,7 +15208,7 @@ for idx,item in enumerate(agents,1):
 			echo "正在配置智能體身份..."
 			openclaw agents set-identity --agent "$agent_id" --name "$name" --theme "$theme"
 		else
-			echo "❌ 智能體建立失敗"
+			echo "❌ 智能體創建失敗"
 			return 1
 		fi
 	}
@@ -15273,16 +15273,16 @@ for idx,item in enumerate(bindings,1):
 		read -e -p "輸入 yes 確認繼續:" confirm
 		[ "$confirm" = "yes" ] || { echo "已取消"; return 1; }
 		if openclaw agents unbind --agent "$agent_id" --bind "$bind_value"; then
-			echo "✅ 路由綁定移除成功"
+			echo "✅ 路由绑定移除成功"
 		else
-			echo "❌ 路由綁定移除失敗"
+			echo "❌ 路由绑定移除失败"
 			return 1
 		fi
 	}
 
 
 	openclaw_multiagent_show_sessions() {
-		send_stats "OpenClaw多智能體-會話概況"
+		send_stats "OpenClaw多智能体-会话概况"
 		python3 -c '
 import json,sys
 sess_obj=json.loads(sys.argv[1] or "{}")
@@ -15352,8 +15352,8 @@ print("✅ 多智能體健康檢查完成")
 		openclaw_multiagent_list_agents
 		read -e -p "輸入要修改身分的智能體ID:" agent_id
 		[ -z "$agent_id" ] && { echo "ID 不能為空"; return 1; }
-		echo "修改選項（留空跳過）："
-		read -e -p "新名稱:" new_name
+		echo "修改选项（留空跳过）："
+		read -e -p "  新名称: " new_name
 		read -e -p "新 Emoji:" new_emoji
 		local cmd="openclaw agents set-identity --agent $agent_id"
 		[ -n "$new_name" ] && cmd="$cmd --name $new_name"
@@ -15774,9 +15774,9 @@ while true; do
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}111. ${color111}多格式檔案轉換工具${gl_kjlan}112. ${color112}Lucky大內網穿透工具"
 	  echo -e "${gl_kjlan}113. ${color113}Firefox瀏覽器${gl_kjlan}114. ${color114}OpenClaw機器人管理工具${gl_huang}★${gl_bai}"
-	  echo -e "${gl_kjlan}115. ${color115}V2RayA代理管理面板                  ${gl_kjlan}116. ${color116}Shadowsocks Rust代理服務端"
+	  echo -e "${gl_kjlan}115. ${color115}V2RayA代理程式管理面板${gl_kjlan}116. ${color116}Shadowsocks Rust代理服务端"
 	  echo -e "${gl_kjlan}117. ${color117}SQL Server資料庫服務${gl_kjlan}118. ${color118}re:Director重新導向服務"
-	  echo -e "${gl_kjlan}119. ${color119}Nginx靜態應用站"
+	  echo -e "${gl_kjlan}119. ${color119}Nginx静态应用站"
 	  echo -e "${gl_kjlan}-------------------------"
 	  echo -e "${gl_kjlan}第三方應用程式列表"
   	  echo -e "${gl_kjlan}想要讓你的應用程式出現在這裡？查看開發者指南:${gl_huang}https://github.com/cenet999/sh/tree/main/apps${gl_bai}"
@@ -19802,7 +19802,7 @@ EOF
 			echo "應用程式已解除安裝"
 		}
 
-		read -e -p "請輸入網域名稱（用於目錄名稱和網站名稱）:" site_domain_input
+		read -e -p "请输入域名（用于目录名和站点名称）: " site_domain_input
 		read -e -p "請輸入對外訪問端口，回車預設使用${docker_port}連接埠:" app_port
 		if [ -z "${site_domain_input}" ]; then
 			echo "網域不能為空"
@@ -20794,7 +20794,7 @@ EOF
 						send_stats "SSH連接埠已修改"
 						new_ssh_port $new_port
 					elif [[ $new_port -eq 0 ]]; then
-						send_stats "退出SSH連接埠修改"
+						send_stats "退出SSH埠修改"
 						break
 					else
 						echo "連接埠號碼無效，請輸入1到65535之間的數字。"
@@ -21853,7 +21853,7 @@ linux_file() {
 				send_stats "壓縮檔案/目錄"
 				;;
 			22) # 解压文件/目录
-				read -e -p "請輸入要解壓縮的檔名 (.tar.gz):" filename
+				read -e -p "請輸入要解壓縮的檔案名稱 (.tar.gz):" filename
 				install tar
 				tar -xzvf "$filename" && echo "已解壓縮$filename" || echo "解壓縮失敗"
 				send_stats "解壓縮檔案/目錄"
@@ -22281,7 +22281,7 @@ while true; do
 				yinsiyuanquan2
 				cp -f ~/kejilion.sh /usr/local/bin/k > /dev/null 2>&1
 				ln -sf /usr/local/bin/k /usr/bin/k > /dev/null 2>&1
-				echo -e "${gl_lv}腳本已更新至最新版本！${gl_huang}v$sh_v_new${gl_bai}"
+				echo -e "${gl_lv}腳本已更新到最新版本！${gl_huang}v$sh_v_new${gl_bai}"
 				send_stats "腳本已經最新$sh_v_new"
 			else
 				rm -f "$tmp_file"
